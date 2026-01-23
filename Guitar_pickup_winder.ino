@@ -3,34 +3,32 @@
 #include <Arduino.h>
 #include <SoftwareSerial.h>
 
-// --- HARDWARE CONFIGURATION ---
+
+// --- HARDWARE PINS ---
 #define WINDER_STEP 17
 #define WINDER_DIR 16
 #define TRAVERSE_STEP 15
 #define TRAVERSE_DIR 14
 #define ENABLE_PIN 12
 
-SoftwareSerial mySerial(2, 3);
+SoftwareSerial mySerial(2, 3); // RX, TX
 
-// --- PARAMETERS ---
-int wireDiameterRaw = 0; // e.g., 1 for 0.1mm
+// --- SETTINGS ---
+#define MOTOR_STEPS 200
+#define MICROSTEPS 8  // Both set to 1/8 (1600 steps/rev)
+#define MAX_RPM 400   // Target speed
+#define START_RPM 100 // Minimum starting speed
+
+// --- VARIABLES ---
+int wireDiameterRaw = 0; // 1 = 0.1mm
 int coilWidthMM = 0;
 int targetTurns = 0;
 
 int currentTurns = 0;
 int turnsInCurrentLayer = 0;
 int turnsPerLayer = 0;
-int layerDirection = -1; // Starts "away" from home based on your test
+int layerDirection = -1; // Start direction
 bool isWinding = false;
-
-// --- STEPPER CONFIGURATION ---
-// Changed both to 8 for speed and sync reliability
-#define MOTOR_STEPS 200
-#define MICROSTEPS 8
-
-// Target speeds for pickup winding
-#define MAX_RPM 600
-#define START_RPM 100
 
 BasicStepperDriver winder(MOTOR_STEPS, WINDER_DIR, WINDER_STEP);
 BasicStepperDriver traverse(MOTOR_STEPS, TRAVERSE_DIR, TRAVERSE_STEP);
@@ -42,7 +40,7 @@ int inputCounter = 0;
 
 void setup() {
   pinMode(ENABLE_PIN, OUTPUT);
-  digitalWrite(ENABLE_PIN, HIGH);
+  digitalWrite(ENABLE_PIN, HIGH); // Motors OFF at start
 
   Serial.begin(9600);
   mySerial.begin(9600);
@@ -50,7 +48,7 @@ void setup() {
   winder.begin(START_RPM, MICROSTEPS);
   traverse.begin(START_RPM, MICROSTEPS);
 
-  Serial.println(">>> System calibrated for 1600 steps/rev <<<");
+  Serial.println(">>> System Ready - 1600 steps/rev mode <<<");
 }
 
 void startMachine() {
@@ -60,40 +58,50 @@ void startMachine() {
     isWinding = true;
     digitalWrite(ENABLE_PIN, LOW);
     winder.begin(START_RPM, MICROSTEPS);
-    Serial.println("WINDING_START");
+    Serial.println("WINDING STARTED");
   }
 }
 
 void stopMachine() {
   isWinding = false;
   digitalWrite(ENABLE_PIN, HIGH);
-  Serial.println("WINDING_STOP");
+  Serial.println("WINDING STOPPED");
   inputCounter = 0;
+  message = "";
 }
 
 void assignParam(int val) {
+  // Only accept parameters when the machine is NOT working
+  // to avoid loopback feedback from display updates
+  if (isWinding)
+    return;
+
   if (inputCounter == 0) {
     wireDiameterRaw = val;
+    Serial.print("Wire: ");
+    Serial.println(wireDiameterRaw);
     inputCounter++;
   } else if (inputCounter == 1) {
     coilWidthMM = val;
+    Serial.print("Width: ");
+    Serial.println(coilWidthMM);
     inputCounter++;
   } else if (inputCounter == 2) {
     targetTurns = val;
+    Serial.print("Total Turns: ");
+    Serial.println(targetTurns);
     if (wireDiameterRaw > 0) {
-      // Logic: (Width * 10) / Wire_Raw_Units
       turnsPerLayer = (coilWidthMM * 10) / wireDiameterRaw;
-      Serial.print("Layer Size: ");
-      Serial.println(turnsPerLayer);
     }
     inputCounter = 0;
-    startMachine();
+    // Wait for explicit START command or auto-start if you prefer
   }
 }
 
 void handleHMI() {
   if (mySerial.available()) {
     byte inByte = mySerial.read();
+
     if ((inByte >= '0' && inByte <= '9') || (inByte >= 'A' && inByte <= 'Z')) {
       message += (char)inByte;
     } else if (inByte == 255) {
@@ -102,12 +110,16 @@ void handleHMI() {
 
     if (endBytes == 3) {
       message.trim();
-      if (message == "START")
+      if (message.indexOf("START") >= 0)
         startMachine();
-      else if (message == "STOP")
+      else if (message.indexOf("STOP") >= 0)
         stopMachine();
-      else if (message.length() > 0)
+      else if (message.length() > 0) {
+        // Strip the 'p' header if Nextion sends it
+        if (message.startsWith("p"))
+          message = message.substring(1);
         assignParam(message.toInt());
+      }
       message = "";
       endBytes = 0;
     }
@@ -119,34 +131,38 @@ void loop() {
 
   if (isWinding) {
     if (currentTurns < targetTurns) {
-      // Soft Start ramp over first 50 turns
+      // Soft Start: Gradual acceleration over 50 turns
       if (currentTurns <= 50) {
         float currentRPM = map(currentTurns, 0, 50, START_RPM, MAX_RPM);
         winder.begin(currentRPM, MICROSTEPS);
         traverse.begin(currentRPM, MICROSTEPS);
       }
 
-      // 2mm pitch lead screw: 180 degrees rotate = 1mm move
-      // Traverse degrees = wireDiameter(mm) * 180
+      // Calculate movement for this single turn
       float degreesToMove = (float)wireDiameterRaw * 18.0;
 
-      // This command moves BOTH motors simultaneously
+      // Sync move: Winder 360, Traverse moves D*180 degrees
       controller.rotate((double)360, (double)(layerDirection * degreesToMove));
 
       currentTurns++;
       turnsInCurrentLayer++;
 
+      // Check for layer flip
       if (turnsInCurrentLayer >= turnsPerLayer) {
         layerDirection *= -1;
         turnsInCurrentLayer = 0;
-        Serial.println("Layer_Flip");
+        Serial.println("Layer Change");
       }
 
-      mySerial.print("n2.val=");
-      mySerial.print(currentTurns);
-      mySerial.write(0xff);
-      mySerial.write(0xff);
-      mySerial.write(0xff);
+      // Optimization: Update Nextion display every 10 turns
+      // This prevents SoftwareSerial from stalling the stepper timing
+      if (currentTurns % 10 == 0 || currentTurns == targetTurns) {
+        mySerial.print("n2.val=");
+        mySerial.print(currentTurns);
+        mySerial.write(0xff);
+        mySerial.write(0xff);
+        mySerial.write(0xff);
+      }
     } else {
       stopMachine();
     }
