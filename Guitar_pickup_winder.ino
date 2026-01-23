@@ -1,9 +1,9 @@
-#include <Arduino.h>
 #include "BasicStepperDriver.h"
 #include "SyncDriver.h"
+#include <Arduino.h>
 #include <SoftwareSerial.h>
 
-// --- KONFIGURACJA PINÓW ---
+// --- HARDWARE CONFIGURATION ---
 #define WINDER_STEP 17
 #define WINDER_DIR 16
 #define TRAVERSE_STEP 15
@@ -12,21 +12,25 @@
 
 SoftwareSerial mySerial(2, 3);
 
-// --- PARAMETRY ---
-int wireDiameterRaw = 0;  // np. 1 dla 0.1mm
-int coilWidthMM = 0;
-int targetTurns = 0;
+// --- PARAMETERS ---
+int wireDiameterRaw = 0; // from x1 (e.g., 1 = 0.1mm)
+int coilWidthMM = 0;     // from n1
+int targetTurns = 0;     // from n2
 
 int currentTurns = 0;
 int turnsInCurrentLayer = 0;
 int turnsPerLayer = 0;
-int layerDirection = -1; // JEŚLI UDERZA W BOK NA STARCIĘ -> ZMIEŃ kierunek= 1 albo -1
+int layerDirection = -1; // -1 starts "away" from home based on your test
 bool isWinding = false;
 
-#define MICROSTEPS 16
+// --- STEPPER CONFIGURATION (Updated from your calibration) ---
 #define MOTOR_STEPS 200
-#define MAX_RPM 400
-#define START_RPM 50
+#define WINDER_MICROSTEPS 64  // Found: 12800 steps/rev
+#define TRAVERSE_MICROSTEPS 8 // Found: 1600 steps/rev
+
+// Speeds adjusted for Nano processing limits and mechanical weight
+#define MAX_RPM 400 // 12.8k microsteps is heavy for Nano, starting safe
+#define START_RPM 60
 
 BasicStepperDriver winder(MOTOR_STEPS, WINDER_DIR, WINDER_STEP);
 BasicStepperDriver traverse(MOTOR_STEPS, TRAVERSE_DIR, TRAVERSE_STEP);
@@ -43,16 +47,11 @@ void setup() {
   Serial.begin(9600);
   mySerial.begin(9600);
 
-  winder.begin(START_RPM, MICROSTEPS);
-  traverse.begin(START_RPM, MICROSTEPS);
+  // Initialize with specific microsteps found during test
+  winder.begin(START_RPM, WINDER_MICROSTEPS);
+  traverse.begin(START_RPM, TRAVERSE_MICROSTEPS);
 
-  Serial.println("System Ready - Waiting for data...");
-}
-
-void stopMachine() {
-  isWinding = false;
-  digitalWrite(ENABLE_PIN, HIGH);
-  Serial.println("STOP/Finished.");
+  Serial.println(">>> Calibrated System Ready <<<");
 }
 
 void startMachine() {
@@ -61,49 +60,41 @@ void startMachine() {
     turnsInCurrentLayer = 0;
     isWinding = true;
     digitalWrite(ENABLE_PIN, LOW);
-    winder.begin(START_RPM, MICROSTEPS);
-    Serial.println("WINDING STARTED!");
+    winder.begin(START_RPM, WINDER_MICROSTEPS);
+    Serial.println("WINDING START");
   }
+}
+
+void stopMachine() {
+  isWinding = false;
+  digitalWrite(ENABLE_PIN, HIGH);
+  Serial.println("WINDING STOP");
+  inputCounter = 0;
 }
 
 void assignParam(int val) {
   if (inputCounter == 0) {
     wireDiameterRaw = val;
-    Serial.print("Wire Raw: ");
-    Serial.println(wireDiameterRaw);
     inputCounter++;
   } else if (inputCounter == 1) {
     coilWidthMM = val;
-    Serial.print("Width (mm): ");
-    Serial.println(coilWidthMM);
     inputCounter++;
   } else if (inputCounter == 2) {
     targetTurns = val;
-    Serial.print("Turns: ");
-    Serial.println(targetTurns);
-
     if (wireDiameterRaw > 0) {
       turnsPerLayer = (coilWidthMM * 10) / wireDiameterRaw;
       Serial.print("Turns Per Layer: ");
       Serial.println(turnsPerLayer);
     }
     inputCounter = 0;
-    startMachine();  // Automatyczny start po 3-cim parametrze
+    startMachine();
   }
 }
 
 void handleHMI() {
   if (mySerial.available()) {
     byte inByte = mySerial.read();
-
-    // DEBUG: Printing raw data to Serial Monitor
-    Serial.print("Recv: '");
-    Serial.print((char)inByte);  // Shows as character (e.g., '1')
-    Serial.print("' | Hex: ");
-    Serial.println(inByte, HEX);  // Shows as HEX value (e.g., 'FF' for 255)
-
-    // Akceptujemy cyfry ORAZ litery (dla komend START/STOP/p)
-    if ((inByte >= '0' && inByte <= '9') || (inByte >= 'A' && inByte <= 'Z') || (inByte == 'p')) {
+    if ((inByte >= '0' && inByte <= '9') || (inByte >= 'A' && inByte <= 'Z')) {
       message += (char)inByte;
     } else if (inByte == 255) {
       endBytes++;
@@ -111,22 +102,12 @@ void handleHMI() {
 
     if (endBytes == 3) {
       message.trim();
-      Serial.print("Nextion Command: ");
-      Serial.println(message);
-
-      if (message.indexOf("START") >= 0) {
+      if (message == "START")
         startMachine();
-      } else if (message.indexOf("STOP") >= 0) {
+      else if (message == "STOP")
         stopMachine();
-      } else {
-        // Jeśli w wiadomości jest 'p' na początku, usuwamy go przed konwersją na int
-        if (message.startsWith("p")) {
-          message = message.substring(1);
-        }
-        int val = message.toInt();
-        if (val > 0) assignParam(val);
-      }
-
+      else if (message.length() > 0)
+        assignParam(message.toInt());
       message = "";
       endBytes = 0;
     }
@@ -138,16 +119,18 @@ void loop() {
 
   if (isWinding) {
     if (currentTurns < targetTurns) {
-      // Soft Start logic
-      if (currentTurns % 5 == 0 && currentTurns < 200) {
-        float currentRPM = map(currentTurns, 0, 200, START_RPM, MAX_RPM);
-        winder.begin(currentRPM, MICROSTEPS);
-        traverse.begin(currentRPM, MICROSTEPS);
+      // Soft Start over first 30 turns
+      if (currentTurns <= 30) {
+        float currentRPM = map(currentTurns, 0, 30, START_RPM, MAX_RPM);
+        winder.begin(currentRPM, WINDER_MICROSTEPS);
+        traverse.begin(currentRPM, TRAVERSE_MICROSTEPS);
       }
 
-      // 2mm pitch -> 180 deg per 1mm. Wire raw is 0.1 units.
+      // 2mm pitch screw = 180 degrees/mm.
+      // Library handles the 1600 steps conversion via TRAVERSE_MICROSTEPS
       float degreesToMove = (float)wireDiameterRaw * 18.0;
 
+      // Sync movement: Winder does 360 deg, Traverse moves calculated distance
       controller.rotate((double)360, (double)(layerDirection * degreesToMove));
 
       currentTurns++;
@@ -156,10 +139,10 @@ void loop() {
       if (turnsInCurrentLayer >= turnsPerLayer) {
         layerDirection *= -1;
         turnsInCurrentLayer = 0;
-        Serial.println("Layer Switch");
+        Serial.println("Direction Change");
       }
 
-      // Update HMI
+      // Update Nextion
       mySerial.print("n2.val=");
       mySerial.print(currentTurns);
       mySerial.write(0xff);
