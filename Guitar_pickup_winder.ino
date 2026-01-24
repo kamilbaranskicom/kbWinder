@@ -35,8 +35,10 @@ void setup() {
   pinMode(T_DIR, OUTPUT);
   digitalWrite(EN, HIGH);
 
-  Serial.begin(9600);
+  Serial.begin(57600);
   Serial.println("--- MANUAL SYNC MODE READY ---");
+  Serial.println("try: \"1 10 1000\" for 0.1 mm wire diameter / 10 mm coil width / 1000 turns.");
+  Serial.println("use empty line to stop.");
 }
 
 void stopMachine() {
