@@ -8,15 +8,15 @@
 #define T_DIR 14
 #define EN 12
 
-SoftwareSerial nextionSerial(2, 3); // HMI on pins 2 (RX) and 3 (TX)
+SoftwareSerial nextionSerial(2, 3);
 
 // --- MECHANICAL SETTINGS (1600 steps/rev) ---
 #define STEPS_PER_REV 1600
-#define STEPS_PER_MM 800 // 1600 steps / 2mm pitch
+#define SCREW_PITCH 2.0
 
 // --- WINDING PARAMETERS ---
-long wireDiaRaw = 0;  // input '1' = 0.1mm
-long coilWidthMM = 0; // input '10' = 10mm
+long wireDiaRaw = 0;
+long coilWidthMM = 0;
 long targetTurns = 0;
 long currentStepsW = 0;
 long totalTargetSteps = 0;
@@ -28,9 +28,9 @@ bool isWinding = false;
 
 // --- SPEED & ACCELERATION ---
 long currentDelay = 400;
-long minDelay = 70; // Approx 500-600 RPM limit for Nano
+long minDelay = 70; // Lower value = Much higher speed, 70 seems to be the limit
 long startDelay = 400;
-long rampSteps = 8000; // Soft start over 5 turns
+long rampInterval = 90; // Decrease delay every 20 steps for ultra-smooth ramp
 
 void setup() {
   pinMode(EN, OUTPUT);
@@ -40,14 +40,14 @@ void setup() {
   pinMode(T_DIR, OUTPUT);
   digitalWrite(EN, HIGH);
 
-  // Adjusted to 57600 as requested
+  // High speed for PC upload and monitoring
   Serial.begin(57600);
   nextionSerial.begin(9600);
 
   Serial.println("--- MANUAL SYNC MODE READY ---");
-  Serial.println("try: \"1 10 1000\" for 0.1 mm wire diameter / 10 mm coil "
-                 "width / 1000 turns.");
-  Serial.println("use empty line (Enter) to stop.");
+  Serial.println(
+      "try: \"1 10 1000\" for 0.1 mm wire / 10 mm width / 1000 turns.");
+  Serial.println("Empty line to stop.");
 }
 
 void stopMachine() {
@@ -57,22 +57,22 @@ void stopMachine() {
 }
 
 void updateHMI(long turns) {
+  // Update Nextion
   nextionSerial.print("n2.val=");
   nextionSerial.print(turns);
   nextionSerial.write(0xff);
   nextionSerial.write(0xff);
   nextionSerial.write(0xff);
 
+  // Update PC
   Serial.print("Turn: ");
-  Serial.println(turns);
+  Serial.print(turns);
+  Serial.println(" / delay = " + (String)currentDelay);
 }
 
 void startMachine() {
   if (wireDiaRaw > 0 && coilWidthMM > 0 && targetTurns > 0) {
     totalTargetSteps = targetTurns * STEPS_PER_REV;
-
-    // Calculate winder steps for one full layer
-    // turns_per_layer = width / (wireDia/10)
     stepsPerLayer = (coilWidthMM * 10 * STEPS_PER_REV) / wireDiaRaw;
 
     currentStepsW = 0;
@@ -82,14 +82,13 @@ void startMachine() {
     isWinding = true;
 
     digitalWrite(EN, LOW);
-    digitalWrite(W_DIR, HIGH);
+    digitalWrite(W_DIR, HIGH); // Set default winding direction
     digitalWrite(T_DIR, (layerDir == 1) ? HIGH : LOW);
     Serial.println(">>> WINDING STARTED");
   }
 }
 
 void handleInput() {
-  // Handle Serial Monitor input
   if (Serial.available()) {
     String input = Serial.readStringUntil('\n');
     input.trim();
@@ -106,13 +105,6 @@ void handleInput() {
       }
     }
   }
-
-  // Handle Nextion input
-  while (nextionSerial.available()) {
-    // Basic Nextion parsing could be added here if needed,
-    // but Serial is primary for this diagnostic phase.
-    nextionSerial.read();
-  }
 }
 
 void loop() {
@@ -121,41 +113,41 @@ void loop() {
   if (isWinding) {
     if (currentStepsW < totalTargetSteps) {
 
-      // 1. STEP WINDER
+      // 1. STEP BOTH MOTORS
       digitalWrite(W_STEP, HIGH);
 
-      // 2. STEP TRAVERSE (Bresenham Sync)
-      // Traverse needs 80 steps per 0.1mm (one wire diameter raw unit)
-      // Per turn (1600 steps), it needs (wireDiaRaw * 80) steps.
+      // Calculate if Traverse needs to step (Bresenham sync)
+      // Traverse moves (wireDiaRaw * 80) steps per 1600 winder steps
       traverseAccumulator += (wireDiaRaw * 80);
       if (traverseAccumulator >= STEPS_PER_REV) {
         digitalWrite(T_STEP, HIGH);
         traverseAccumulator -= STEPS_PER_REV;
       }
 
+      // Shared delay determines the speed of both motors
       delayMicroseconds(currentDelay);
       digitalWrite(W_STEP, LOW);
       digitalWrite(T_STEP, LOW);
       delayMicroseconds(currentDelay);
 
-      // 3. SMOOTH ACCELERATION
-      if (currentStepsW < rampSteps && currentDelay > minDelay) {
-        if (currentStepsW % 40 == 0)
+      // 2. TRUE SOFT START (Continuous per-step acceleration)
+      if (currentDelay > minDelay) {
+        if (currentStepsW % rampInterval == 0)
           currentDelay--;
       }
 
       currentStepsW++;
       currentLayerSteps++;
 
-      // 4. LAYER DIRECTION FLIP
+      // 3. DIRECTION FLIP
       if (currentLayerSteps >= stepsPerLayer) {
         layerDir *= -1;
         digitalWrite(T_DIR, (layerDir == 1) ? HIGH : LOW);
         currentLayerSteps = 0;
-        Serial.println("Layer Change");
+        Serial.println("--- LAYER CHANGE ---");
       }
 
-      // 5. UPDATE PROGRESS (Every full turn = 1600 steps)
+      // 4. PER-TURN FEEDBACK
       if (currentStepsW % STEPS_PER_REV == 0) {
         updateHMI(currentStepsW / STEPS_PER_REV);
       }
