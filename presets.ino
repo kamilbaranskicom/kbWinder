@@ -2,12 +2,13 @@
 
 // --- EEPROM HELPERS ---
 
-void loadConfig() {
+void loadMachineConfig() {
   EEPROM.get(EEPROM_CONF_ADDR, cfg);
   if (cfg.stepsPerRevW == -1 || cfg.stepsPerRevW == 0) { // First run defaults
     cfg = {2.0, 1600, 1600, 600, 400, false, false, true, false};
     EEPROM.put(EEPROM_CONF_ADDR, cfg);
   }
+  updateDerivedValues();
 }
 
 int findPresetIndex(String name) {
