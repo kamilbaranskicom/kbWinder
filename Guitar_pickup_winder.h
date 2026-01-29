@@ -15,11 +15,6 @@
 #define EN 12
 #define LIMIT_PIN 4
 
-// --- SYSTEM CONSTANTS ---
-const int MAX_PRESETS = 25;
-const int EEPROM_CONF_ADDR = 0;
-const int EEPROM_PRESET_START = 50; // Start address for presets
-
 enum MachineState { IDLE, RUNNING, PAUSED, HOMING, MOVING, ERROR };
 MachineState state = IDLE;
 
