@@ -7,10 +7,6 @@ SoftwareSerial nextionSerial(2, 3);
 MachineConfig cfg;
 WindingPreset prst;
 
-bool isWinding = false;
-bool isPaused = false;
-bool isHomed = false;
-
 long absPos = 0;            // Traverse steps from 0
 long currentStepsW = 0;     // Winder progress in steps
 long currentLayerSteps = 0; // Steps in current layer
@@ -23,6 +19,17 @@ int startRPM = 50;
 int currentRPM = 0;
 long currentDelay = 800;
 
+int homingPhase = 0;       // 0: searching switch, 1: backing off
+long homingDelay = 400;    // Current delay for steps
+long backoffStepsLeft = 0; // Counter for the return move
+
+// Zmienne pomocnicze dla ruchów asynchronicznych
+char activeMotor = ' ';    // 'W' lub 'T'
+long targetAbsPos = 0;     // Docelowa pozycja dla T (w krokach)
+long moveStepsLeft = 0;    // Licznik kroków dla ruchu relatywnego (W/T)
+long moveDelay = 400;      // Aktualne opóźnienie (prędkość)
+bool moveRelative = false; // Flaga określająca typ ruchu
+
 // --- UTILS ---
 
 long rpmToDelay(int rpm) {
@@ -31,50 +38,12 @@ long rpmToDelay(int rpm) {
   return 30000000L / ((long)rpm * cfg.stepsPerRevW);
 }
 
-void loadMachineConfig() {
-  EEPROM.get(0, cfg);
-  if (cfg.stepsPerRevW == -1 || cfg.stepsPerRevW == 0) {
-    cfg = {2.0, 1600, 1600, 800, 400, 0b00};
-    EEPROM.put(0, cfg);
-  }
-}
-
 // --- CORE FUNCTIONS ---
 
 void stopMachine() {
   state = IDLE;
   digitalWrite(EN, HIGH); // Offline
   Serial.println(F("MSG: Stopped"));
-}
-
-void homeTraverse() {
-  if (isWinding)
-    return;
-  Serial.println(F("MSG: Homing..."));
-  digitalWrite(EN, LOW);
-  digitalWrite(T_DIR,
-               (cfg.directions & 0x02) ? HIGH : LOW); // Move towards switch
-
-  while (digitalRead(LIMIT_PIN) == HIGH) {
-    digitalWrite(T_STEP, HIGH);
-    delayMicroseconds(400);
-    digitalWrite(T_STEP, LOW);
-    delayMicroseconds(400);
-  }
-
-  absPos = 0;
-  isHomed = true;
-
-  // Back off
-  digitalWrite(T_DIR, (cfg.directions & 0x02) ? LOW : HIGH);
-  for (int i = 0; i < 800; i++) {
-    digitalWrite(T_STEP, HIGH);
-    delayMicroseconds(400);
-    digitalWrite(T_STEP, LOW);
-    delayMicroseconds(400);
-    absPos += (cfg.directions & 0x02) ? -1 : 1;
-  }
-  Serial.println(F("MSG: Home 0 established"));
 }
 
 void printStatus() {
@@ -106,60 +75,131 @@ void printStatus() {
 */
 }
 
-void moveManual(char motor, long steps, int rpm) {
-  digitalWrite(EN, LOW);
-  long dly = rpmToDelay(rpm);
-  int sPin = (motor == 'W') ? W_STEP : T_STEP;
-  int dPin = (motor == 'W') ? W_DIR : T_DIR;
+void moveManual(String cmd) {
+  activeMotor = cmd[0];
+  String param = cmd.substring(2);
+  int spaceIdx = param.indexOf(' ');
+  float dist =
+      ((spaceIdx == -1) ? param : param.substring(0, spaceIdx)).toFloat();
+  int rpm = (spaceIdx == -1) ? (activeMotor == 'W' ? 100 : 60)
+                             : param.substring(spaceIdx + 1).toInt();
 
-  bool dirFlag = (steps > 0);
-  if (motor == 'W' && (cfg.directions & 0x01))
-    dirFlag = !dirFlag;
-  if (motor == 'T' && (cfg.directions & 0x02))
-    dirFlag = !dirFlag;
+  moveRelative = true;
+  moveDelay = 30000000L / ((long)rpm * (activeMotor == 'W' ? cfg.stepsPerRevW
+                                                           : cfg.stepsPerRevT));
 
-  digitalWrite(dPin, dirFlag ? HIGH : LOW);
-
-  for (long i = 0; i < abs(steps); i++) {
-    digitalWrite(sPin, HIGH);
-    delayMicroseconds(dly);
-    digitalWrite(sPin, LOW);
-    delayMicroseconds(dly);
-
-    // Update progress if we are unwinding while paused
-    if (isPaused && motor == 'W') {
-      if (steps > 0)
-        currentStepsW++;
-      else
-        currentStepsW--;
-    }
-    if (motor == 'T') {
-      if (steps > 0)
-        absPos++;
-      else
-        absPos--;
-    }
+  if (activeMotor == 'W') {
+    moveStepsLeft = (long)(dist * cfg.stepsPerRevW); // distance w obrotach
+  } else {
+    moveStepsLeft = (long)(dist * STEPS_PER_MM); // distance w mm
   }
-  if (!isWinding && !isPaused)
-    digitalWrite(EN, HIGH);
+
+  state = MOVING;
+  digitalWrite(EN, LOW);
 }
 
-void startWinding() {
-  if (prst.totalTurns <= 0)
+void handleStartCommand(String params) {
+  params.trim();
+  if (params.length() == 0) {
+    startMachine();
     return;
+  }
 
-  stepsPerLayer = (long)((prst.coilWidth / prst.wireDia) * cfg.stepsPerRevW);
+  // Sprawdź czy parametr to nazwa presetu (w cudzysłowie lub tekst)
+  if (params.startsWith("\"") || !isdigit(params[0])) {
+    String name = params;
+    name.replace("\"", "");
+    int idx = findPresetIndex(name);
+    if (idx != -1) {
+      EEPROM.get(EEPROM_PRESET_START + (idx * sizeof(WindingPreset)), active);
+      Serial.print(F("MSG: Loaded preset "));
+      Serial.println(active.name);
+      startMachine();
+    } else {
+      Serial.println(F("ERROR: Preset not found"));
+    }
+    return;
+  }
+
+  // Jeśli to liczby, parsujemy pozycje spacji
+  float vals[6];
+  int count = 0;
+  int pos = 0;
+  while (pos < params.length() && count < 6) {
+    int nextSpace = params.indexOf(' ', pos);
+    String part = (nextSpace == -1) ? params.substring(pos)
+                                    : params.substring(pos, nextSpace);
+    vals[count++] = part.toFloat();
+    if (nextSpace == -1)
+      break;
+    pos = nextSpace + 1;
+  }
+
+  // Przypisz sparsowane wartości do 'active'
+  if (count >= 3) {
+    active.wireDia = vals[0];
+    active.coilWidth = vals[1];
+    active.totalTurns = (long)vals[2];
+    if (count >= 4)
+      active.targetRPM = (int)vals[3];
+    if (count >= 5)
+      active.rampRPM = (int)vals[4];
+    if (count >= 6)
+      active.startOffset = (long)vals[5];
+
+    startMachine();
+  } else {
+    Serial.println(
+        F("ERROR: START requires at least 3 parameters (wire width turns)"));
+  }
+}
+
+void startMachine() {
+  // 1. Walidacja podstawowa
+  if (active.totalTurns <= 0 || active.wireDia <= 0 || active.coilWidth <= 0) {
+    Serial.println(F("ERROR: Invalid parameters (Wire, Width, or Turns is 0)"));
+    state = IDLE;
+    return;
+  }
+
+  // 2. Obsługa Bazowania (Homing) przed startem
+  if (cfg.homeBeforeStart && !isHomed) {
+    Serial.println(F("MSG: Auto-homing before start..."));
+    // Tutaj można wywołać proces homingu, ale ponieważ jest asynchroniczny,
+    // najlepiej byłoby zmienić stan na HOMING, a po jego zakończeniu wrócić do
+    // START. Na potrzeby V3.0 przyjmijmy, że użytkownik musi być zhomowany.
+    state = IDLE;
+    Serial.println(F("ERROR: Machine not homed. Use SEEK ZERO first."));
+    return;
+  }
+
+  // 3. Dojazd do pozycji START (Offset)
+  if (absPos != active.startOffset) {
+    Serial.println(F("MSG: Moving to start offset..."));
+    moveTraverseAbs(active.startOffset, cfg.maxRPM_T);
+  }
+
+  // 4. Inicjalizacja parametrów sesji
+  // Obliczamy ile kroków nawijarki przypada na jedną pełną warstwę
+  // (coilWidth / wireDia) to liczba zwojów na warstwę
+  stepsPerLayer =
+      (long)((active.coilWidth / active.wireDia) * (float)cfg.stepsPerRevW);
+
   currentStepsW = 0;
   currentLayerSteps = 0;
   traverseAccumulator = 0;
-  currentRPM = startRPM;
-  currentDelay = rpmToDelay(currentRPM);
-  layerDir = 1;
+  layerDir = 1; // Zaczynamy odsuwając się od Home
 
-  isWinding = true;
-  isPaused = false;
-  digitalWrite(EN, LOW);
-  Serial.println(F("MSG: Winding Start"));
+  // 5. Dynamika (Soft Start)
+  currentRPM = 50; // Zawsze startujemy bezpiecznie (można dodać cfg.startRPM)
+  currentDelay = rpmToDelay(currentRPM);
+
+  // 6. Aktywacja silników i zmiana stanu
+  digitalWrite(EN, LOW); // Prąd na silniki
+  state = RUNNING;
+
+  Serial.println(F("MSG: Winding started."));
+  printStatus();
 }
 
 void resumeWinding() {
@@ -177,37 +217,77 @@ void resumeWinding() {
 void processCommand(String cmd) {
   cmd.trim();
 
-  if (cmd == "STOP") {
+  if (cmd.startsWith(F("STOP"))) {
     stopMachine();
-  } else if (cmd == "PAUSE") {
+  } else if (cmd.startsWith(F("START"))) {
+    handleStartCommand(cmd.substring(6));
+  } else if (cmd.startsWith(F("PAUSE"))) {
     state = PAUSED;
     digitalWrite(EN, HIGH);
     Serial.println(F("MSG: Paused (Offline)"));
-  } else if (cmd == "RESUME") {
+  } else if (cmd.startsWith(F("RESUME"))) {
     resumeWinding();
-  } else if (cmd.startsWith("SET ")) {
+  } else if (cmd.startsWith(F("GOTO "))) {
+    handleGotoCommand(cmd);
+  } else if (cmd.startsWith(F("SEEK ZERO"))) {
+    startSeekingZero(cmd);
+  } else if (cmd == F("SET ZERO")) {
+    absPos = 0;
+    isHomed = true;
+    Serial.println(F("MSG: Current position set as ZERO"));
+  } else if (cmd == F("SET HOME")) {
+    cfg.homePos = absPos;
+    EEPROM.put(EEPROM_CONF_ADDR, cfg);
+    Serial.print(F("MSG: HOME set to "));
+    Serial.println(absPos / STEPS_PER_MM);
+  } else if (cmd.startsWith(F("SET "))) {
     handleSet(cmd);
-  } else if (cmd.startsWith("GET")) {
+  } else if (cmd.startsWith(F("GET"))) {
     handleGet(cmd);
-  } else if (cmd == "EXPORT") {
+  } else if (cmd.startsWith(F("SAVE "))) {
+    savePreset(cmd.substring(5));
+  } else if (cmd.startsWith(F("LOAD "))) {
+    loadPresetByName(cmd.substring(5));
+  } else if (cmd.startsWith(F("DELETE "))) {
+    deletePreset(cmd.substring(7));
+  } else if (cmd.startsWith(F("EXPORT"))) {
     exportCSV();
-  } else if (cmd == "STATUS") {
+  } else if (cmd.startsWith(F("STATUS"))) {
     printStatus();
+  } else if (cmd.startsWith(F("HELP"))) {
+    printHelp();
+  } else if (cmd.startsWith(F("LONGHELP"))) {
+    printLongHelp();
+  } else if (cmd.startsWith(F("SETHELP"))) {
+    printSetHelp();
   } // (... handle more commands...)
   else if (cmd == "H") {
     homeTraverse();
-  } else if (cmd.startsWith("START ")) {
-    // Quick Winding: "START [dia] [width] [turns] [rpm] [ramp]"
-    // Parsing logic...
   } else if (cmd.startsWith("T ") || cmd.startsWith("W ")) {
-    // Manual: "T 800 200" (steps, rpm)
-    char m = cmd[0];
-    int s1 = cmd.indexOf(' ');
-    int s2 = cmd.lastIndexOf(' ');
-    long stp = cmd.substring(s1 + 1, s2).toInt();
-    int rpm = cmd.substring(s2 + 1).toInt();
-    moveManual(m, stp, rpm);
+    moveManual(cmd);
   }
+}
+
+void handleGotoCommand(String cmd) {
+  // GOTO <position> [speed] lub GOTO HOME [speed]
+  String param = cmd.substring(5);
+  int spaceIdx = param.indexOf(' ');
+  String posStr = (spaceIdx == -1) ? param : param.substring(0, spaceIdx);
+  int rpm =
+      (spaceIdx == -1) ? cfg.maxRPM_T : param.substring(spaceIdx + 1).toInt();
+
+  activeMotor = 'T';
+  moveRelative = false;
+  moveDelay = 30000000L / ((long)rpm * cfg.stepsPerRevT);
+
+  if (posStr == F("HOME")) {
+    targetAbsPos = cfg.homePos; // Ustawione przez SET HOME
+  } else {
+    targetAbsPos = (long)(posStr.toFloat() * STEPS_PER_MM);
+  }
+
+  state = MOVING;
+  digitalWrite(EN, LOW);
 }
 
 void printHelp() {
@@ -215,44 +295,58 @@ void printHelp() {
                    "Control: START, STOP, PAUSE, RESUME\n"
                    "Presets: SAVE, LOAD, DELETE, EXPORT, IMPORT\n"
                    "Settings: SET ..., GET ...\n"
-                   "Info: STATUS, HELP, LONGHELP"));
+                   "Info: STATUS, HELP, LONGHELP, SETHELP"));
 }
 
 void printLongHelp() {
   Serial.println(F(
-    "START (<preset>|<wire-diameter> <coil-length> <turns>): starts winding the coil\n"
-    "STOP: stop winding\n"
-    "PAUSE: pause winding and put motors in offline; doesn't reset position\n"
-    "RESUME: resume winding after PAUSE\n"
-    "SEEK ZERO: finds ZERO position (by moving Traverse backward until the limit switch is found or STOP command is sent)\n"
-    "HOME: goes to HOME position\n"
-    "W <distance> [speed]: move Winder to relative position\n"
-    "T <distance> [speed]: move Traverse to relative position\n"
-    "GOTO T <position> [speed]: move Traverse to absolutee position\n"
-    "SAVE <name> [<wire-diameter> <coil-length> <turns>]: saves preset <name>\n"
-    "LOAD <name>: loads preset <name>\n"
-    "DELETE <name>: deletes preset <name>\n"
-    "EXPORT: prints presets in CSV format\n"
-    "IMPORT: imports presets in CSV format (ends with empty line)\n"
-    "STATUS: prints status\n"
-    "HELP: short help\n"
-    "LONGHELP: this help\n"
-    "SET <wire-diameter> <coil-length> <turns>: sets parameters\n"
-    "SET WIRE <wire-diameter>: in mm\n"
-    "SET COIL LENGTH <coil-length>: in mm\n"
-    "SET TURNS <turns>: how many turns the winder should go\n"
-    "SET HOME: sets HOME position to current position\n"
-    "SET SCREW PITCH <pitch>: sets screw pitch in mm\n"
-    "SET WINDER STEPS <steps>: sets winder steps\n"
-    "SET TRAVERSE STEPS <steps>: sets traverse steps\n"
-    "SET WINDER SPEED <rpm>: sets winder max speed\n"
-    "SET TRAVERSE SPEED <rpm>: sets traverse max speed\n"
-    "SET WINDER DIR [FORWARD|BACKWARD]: sets winder direction\n"
-    "SET TRAVERSE DIR [FORWARD|BACKWARD]: sets traverse direction\n"
-    "SET LIMIT SWITCH [ON|OFF]: if off, seeks for ZERO slower (to allow for manual STOP command)\n"
-    "SET ZERO BEFORE HOME [ON|OFF]: if on, finds zero when going HOME\n"
-    "SET HOME BEFORE START [ON|OFF]: if on, goes HOME before winding.\n"
-    "GET <parameter>: prints current value of <parameter>");
+      "START (<preset>|<wire-diameter> <coil-length> <turns> [rpm] [ramp] "
+      "[offset]):\n"
+      "  starts winding the coil\n"
+      "STOP: stop winding\n"
+      "PAUSE: pause winding and put motors in offline; doesn't reset position\n"
+      "RESUME: resume winding after PAUSE\n"
+      "SEEK ZERO [speed]: finds ZERO position (by moving Traverse backward\n"
+      "  until the limit switch is found or STOP command is sent)\n"
+      "W <distance> [speed]: move Winder to relative position\n"
+      "T <distance> [speed]: move Traverse to relative position\n"
+      "GOTO <position> [speed]: move Traverse to absolute position\n"
+      "GOTO HOME [speed]: goes to HOME position\n"
+      "SAVE <name> [<wire-diameter> <coil-length> <turns>]: saves preset "
+      "<name>\n"
+      "LOAD <name>: loads preset <name>\n"
+      "DELETE <name>: deletes preset <name>\n"
+      "EXPORT: prints presets in CSV format\n"
+      "IMPORT: imports presets in CSV format (ends with empty line)\n"
+      "STATUS: prints status\n"
+      "SET ... : sets parameter(s)\n"
+      "GET ... : gets parameter(s)\n"
+      "SETHELP: parameters list\n"
+      "HELP: short help\n"
+      "LONGHELP: this help"));
+}
+
+void printSetHelp() {
+  Serial.println(
+      F("SET <wire-diameter> <coil-length> <turns>: sets parameters\n"
+        "SET WIRE <wire-diameter>: in mm\n"
+        "SET COIL LENGTH <coil-length>: in mm\n"
+        "SET TURNS <turns>: how many turns the winder should go\n"
+        "SET ZERO: sets ZERO position to current position\n"
+        "SET HOME: sets HOME position to current position\n"
+        "SET SCREW PITCH <pitch>: sets screw pitch in mm\n"
+        "SET WINDER STEPS <steps>: sets winder steps\n"
+        "SET TRAVERSE STEPS <steps>: sets traverse steps\n"
+        "SET WINDER SPEED <rpm>: sets winder max speed\n"
+        "SET TRAVERSE SPEED <rpm>: sets traverse max speed\n"
+        "SET WINDER DIR [FORWARD|BACKWARD]: sets winder direction\n"
+        "SET TRAVERSE DIR [FORWARD|BACKWARD]: sets traverse direction\n"
+        "SET LIMIT SWITCH [ON|OFF]: if off, seeks for ZERO slower (to allow\n"
+        "  for manual STOP command)\n"
+        "SET ZERO BEFORE HOME [ON|OFF]: if on, finds zero when going HOME\n"
+        "SET HOME BEFORE START [ON|OFF]: if on, goes HOME before winding.\n"
+        "GET [parameter]: prints current value of <parameter> (or all "
+        "parameters if not specified)"));
 }
 
 void setup() {
@@ -280,7 +374,11 @@ void loop() {
   case RUNNING:
     performWindingStep();
     break;
+  case MOVING:
+    performMovingStep();
+    break;
   case HOMING:
+    performSeekZero();
     break;
   case IDLE:
   case PAUSED:
@@ -294,7 +392,7 @@ void performWindingStep() {
 
   if (currentStepsW < (active.totalTurns * cfg.stepsPerRevW)) {
 
-    // 1. Set Winder Direction (Winder usually spins one way per preset)
+    // 1. Set Winder Direction (Winder always spins one way)
     digitalWrite(W_DIR, cfg.dirW ? HIGH : LOW);
 
     // 2. Set Traverse Direction
@@ -334,7 +432,7 @@ void performWindingStep() {
         currentDelay = rpmToDelay(currentRPM);
       }
       // Auto-status update every turn could be too chatty,
-      // but keeping it for now as per your request
+      // but keeping it for now
       printStatus();
     }
 
@@ -351,4 +449,121 @@ void performWindingStep() {
     Serial.println(F("MSG: Winding complete"));
     stopMachine();
   }
+}
+
+void startSeekingZero(String cmd) {
+  String speedPart = cmd.substring(9);
+  speedPart.trim();
+
+  int rpm;
+  if (speedPart.length() > 0) {
+    rpm = speedPart.toInt();
+  } else {
+    // If no speed given, use max or slow speed based on switch config
+    rpm = cfg.useLimitSwitch ? cfg.maxRPM_T
+                             : 60; // 60 RPM is safe for manual STOP
+  }
+
+  // Initializing Homing State
+  currentRPM = rpm;
+  homingDelay = 30000000L / ((long)currentRPM * cfg.stepsPerRevT);
+  homingPhase = 0;
+  state = HOMING;
+
+  digitalWrite(EN, LOW);
+  // Direction: move towards home (reverse of cfg.dirT)
+  digitalWrite(T_DIR, cfg.dirT ? LOW : HIGH);
+
+  Serial.print(F("MSG: Seeking ZERO at "));
+  Serial.print(currentRPM);
+  Serial.println(F(" RPM"));
+}
+
+void performSeekZero() {
+  if (homingPhase == 0) {
+    // Phase 0: Searching for limit switch
+    // Check if switch hit (if enabled)
+    if (cfg.useLimitSwitch && digitalRead(LIMIT_PIN) == LOW) {
+      absPos = 0;
+      isHomed = true;
+      homingPhase = 1;
+      backoffStepsLeft = 800; // Move back 1mm (800 steps for 2mm pitch)
+      digitalWrite(T_DIR, cfg.dirT ? HIGH : LOW); // Flip direction
+      Serial.println(F("MSG: Switch hit. Backing off..."));
+    } else {
+      // Perform a single step toward zero
+      digitalWrite(T_STEP, HIGH);
+      delayMicroseconds(homingDelay);
+      digitalWrite(T_STEP, LOW);
+      delayMicroseconds(homingDelay);
+      // Note: In Phase 0 we don't necessarily update absPos until it's set to 0
+    }
+  } else if (homingPhase == 1) {
+    // Phase 1: Backing off for precision
+    if (backoffStepsLeft > 0) {
+      digitalWrite(T_STEP, HIGH);
+      delayMicroseconds(homingDelay);
+      digitalWrite(T_STEP, LOW);
+      delayMicroseconds(homingDelay);
+
+      backoffStepsLeft--;
+      absPos += cfg.dirT ? 1 : -1;
+    } else {
+      state = IDLE;
+      Serial.print(F("MSG: Zero established. Position: "));
+      Serial.println(absPos / STEPS_PER_MM);
+    }
+  }
+}
+
+void performMovingStep() {
+  if (activeMotor == 'T') {
+    if (moveRelative) { // Ruch T <distance>
+      if (moveStepsLeft != 0) {
+        digitalWrite(T_DIR, (moveStepsLeft > 0) ? cfg.dirT : !cfg.dirT);
+        singleStep(T_STEP, moveDelay);
+        absPos += (moveStepsLeft > 0) ? 1 : -1;
+        moveStepsLeft += (moveStepsLeft > 0) ? -1 : 1;
+      } else {
+        state = IDLE;
+      }
+    } else { // Ruch GOTO <position>
+      if (absPos != targetAbsPos) {
+        digitalWrite(T_DIR, (targetAbsPos > absPos) ? cfg.dirT : !cfg.dirT);
+        singleStep(T_STEP, moveDelay);
+        absPos += (targetAbsPos > absPos) ? 1 : -1;
+      } else {
+        state = IDLE;
+      }
+    }
+  } else if (activeMotor == 'W') { // Ruch W <distance>
+    if (moveStepsLeft != 0) {
+      digitalWrite(W_DIR, (moveStepsLeft > 0) ? cfg.dirW : !cfg.dirW);
+      singleStep(W_STEP, moveDelay);
+      moveStepsLeft += (moveStepsLeft > 0) ? -1 : 1;
+
+      // Jeśli odwijamy na pauzie, aktualizujemy postęp nawijania
+      if (isPaused) {
+        if (moveStepsLeft > 0)
+          currentStepsW++;
+        else
+          currentStepsW--;
+      }
+    } else {
+      state = IDLE;
+    }
+  }
+  if (state == IDLE) {
+    if (!isPaused) {          // wtf?
+      digitalWrite(EN, HIGH); // Offline tylko jeśli nie jesteśmy w trybie pauzy
+    }
+    Serial.println(F("MSG: Move complete"));
+  }
+}
+
+void singleStep(int pin, long dly) {
+  digitalWrite(pin, HIGH);
+  delayMicroseconds(dly);
+  digitalWrite(pin, LOW);
+  delayMicroseconds(dly);
 }
