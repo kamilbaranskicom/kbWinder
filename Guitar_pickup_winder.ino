@@ -119,15 +119,8 @@ void handleStartCommand(String params) {
   // Sprawdź czy parametr to nazwa presetu (w cudzysłowie lub tekst)
   if (params.startsWith("\"") || !isdigit(params[0])) {
     String name = params;
-    name.replace("\"", "");
-    int idx = findPresetIndex(name);
-    if (idx != -1) {
-      EEPROM.get(EEPROM_PRESET_START + (idx * sizeof(WindingPreset)), active);
-      Serial.print(F("MSG: Loaded preset "));
-      Serial.println(active.name);
+    if (loadPresetByName(name)) {
       startMachine();
-    } else {
-      Serial.println(F("ERROR: Preset not found"));
     }
     return;
   }

@@ -59,6 +59,31 @@ void exportCSV() {
   }
 }
 
+bool loadPresetByName(String name) {
+  name.replace("\"", ""); // Usuń ewentualne cudzysłowy
+  name.trim();
+
+  int index = findPresetIndex(name);
+  if (index == -1) {
+    Serial.print(F("ERROR: Preset '"));
+    Serial.print(name);
+    Serial.println(F("' not found."));
+    return false;
+  };
+
+  // Wczytaj dane z EEPROM bezpośrednio do zmiennej globalnej 'active'
+  EEPROM.get(EEPROM_PRESET_START + (index * sizeof(WindingPreset)), active);
+
+  Serial.print(F("SYSTEM: Loaded preset '"));
+  Serial.print(active.name);
+  Serial.println(F("' into active memory."));
+
+  // Po załadowaniu warto wyświetlić parametry, żeby użytkownik widział co
+  // wczytał
+  handleGet(F("GET"));
+  return true;
+}
+
 void savePreset(String name) {
   if (name.length() == 0)
     return;
