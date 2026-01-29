@@ -5,7 +5,19 @@
 void loadMachineConfig() {
   EEPROM.get(EEPROM_CONF_ADDR, cfg);
   if (cfg.stepsPerRevW == -1 || cfg.stepsPerRevW == 0) { // First run defaults
-    cfg = {2.0, 1600, 1600, 600, 400, false, false, true, false};
+
+    cfg = {
+        2.0,   // float screwPitch;
+        1600,  // int stepsPerRevW;
+        1600,  // int stepsPerRevT;
+        600,   // int maxRPM_W;
+        400,   // int maxRPM_T;
+        false, // bool dirW;
+        false, // bool dirT;
+        true,  // bool useLimitSwitch;
+        false  // bool homeBeforeStart;
+    };
+
     EEPROM.put(EEPROM_CONF_ADDR, cfg);
   }
   updateDerivedValues();

@@ -238,12 +238,15 @@ void processCommand(String cmd) {
   } else if (cmd == F("SET ZERO")) {
     absPos = 0;
     isHomed = true;
-    Serial.println(F("MSG: Current position set as ZERO"));
+    Serial.println(
+        F("MSG: Machine absolute ZERO established at current position"));
   } else if (cmd == F("SET HOME")) {
-    cfg.homePos = absPos;
-    EEPROM.put(EEPROM_CONF_ADDR, cfg);
-    Serial.print(F("MSG: HOME set to "));
-    Serial.println(absPos / stepsPerMM);
+    // HOME w naszym nazewnictwie to startOffset w strukturze presetu
+    active.startOffset = absPos;
+
+    Serial.print(F("MSG: Preset START OFFSET set to "));
+    Serial.print((float)absPos / stepsPerMM, 3);
+    Serial.println(F(" mm (Remember to SAVE if you want to keep it!)"));
   } else if (cmd.startsWith(F("SET "))) {
     handleSet(cmd);
   } else if (cmd.startsWith(F("GET"))) {
@@ -275,6 +278,7 @@ void processCommand(String cmd) {
 void handleGotoCommand(String cmd) {
   // GOTO <position> [speed] lub GOTO HOME [speed]
   String param = cmd.substring(5);
+  param.trim();
   int spaceIdx = param.indexOf(' ');
   String posStr = (spaceIdx == -1) ? param : param.substring(0, spaceIdx);
   int rpm =
@@ -282,10 +286,11 @@ void handleGotoCommand(String cmd) {
 
   activeMotor = 'T';
   moveRelative = false;
-  moveDelay = 30000000L / ((long)rpm * cfg.stepsPerRevT);
+  moveDelay = rpmToDelay(cfg.maxRPM_T, cfg.stepsPerRevT);
 
   if (posStr == F("HOME")) {
-    targetAbsPos = cfg.homePos; // Ustawione przez SET HOME
+    // GOTO HOME zawsze jedzie do punktu startowego aktualnego presetu
+    targetAbsSteps = active.startOffset;
   } else {
     targetAbsPos = (long)(posStr.toFloat() * stepsPerMM);
   }

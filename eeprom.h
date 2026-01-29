@@ -1,5 +1,5 @@
-#ifndef PRESETS_H
-#define PRESETS_H
+#ifndef EEPROM_H
+#define EEPROM_H
 
 // --- SYSTEM CONSTANTS ---
 const int MAX_PRESETS = 25;
