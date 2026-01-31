@@ -1,4 +1,4 @@
-#include "presets.h"
+#include "eeprom.h"
 
 // --- EEPROM HELPERS ---
 
@@ -12,6 +12,8 @@ void loadMachineConfig() {
         1600,  // int stepsPerRevT;
         600,   // int maxRPM_W;
         400,   // int maxRPM_T;
+        40,    // int startRPM_W;
+        40,    // int startRPM_T;
         false, // bool dirW;
         false, // bool dirT;
         true,  // bool useLimitSwitch;
