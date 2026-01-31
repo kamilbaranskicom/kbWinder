@@ -9,6 +9,7 @@ struct MachineConfig {
   int stepsPerRevT;
   int maxRPM_W;
   int maxRPM_T;
+  int startRPM;
   bool dirW;
   bool dirT;
   bool useLimitSwitch;
