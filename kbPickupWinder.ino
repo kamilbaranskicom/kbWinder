@@ -41,50 +41,25 @@ long rpmToDelay(int rpm) {
 
 // --- CORE FUNCTIONS ---
 
-/*
-void moveManual(String cmd) {
-  // obsolete
-  activeMotor = cmd[0];
-  String param = cmd.substring(2);
-  int spaceIdx = param.indexOf(' ');
-  float dist =
-      ((spaceIdx == -1) ? param : param.substring(0, spaceIdx)).toFloat();
-  int rpm = (spaceIdx == -1) ? (activeMotor == 'W' ? 100 : 60)
-                             : param.substring(spaceIdx + 1).toInt();
-
-  moveRelative = true;
-  moveDelay = 30000000L / ((long)rpm * (activeMotor == 'W' ? cfg.stepsPerRevW
-                                                           : cfg.stepsPerRevT));
-
-  if (activeMotor == 'W') {
-    moveStepsLeft = (long)(dist * cfg.stepsPerRevW); // distance w obrotach
-  } else {
-    moveStepsLeft = (long)(dist * stepsPerMM); // distance w mm
-  }
-
-  state = MOVING;
-  digitalWrite(EN, LOW);
-}
-  */
-
 void parseStartCommand(String params) {
   params.trim();
 
-  // if empty - we're using 'active' parameters.
+  // if empty - we're using current 'active' parameters.
   if (params.length() == 0) {
-    initiateWindingProcess();
+    initiateWinding();
     return;
+  } else if (params.startsWith("\"") || !isdigit(params[0])) {
+    // Parameter is a preset name (in quotes or just text)
+    if (loadPresetByName(params))
+      initiateWinding();
+  } else {
+    // Parameters are numeric values
+    if (parseStartCommandNumericValues(params))
+      initiateWinding();
   }
+}
 
-  // Sprawdź czy parametr to nazwa presetu (w cudzysłowie lub tekst)
-  if (params.startsWith("\"") || !isdigit(params[0])) {
-    String name = params;
-    if (loadPresetByName(name)) {
-      initiateWindingProcess();
-    }
-    return;
-  }
-
+bool parseStartCommandNumericValues(String params) {
   // Jeśli to liczby, parsujemy pozycje spacji
   float vals[6];
   int count = 0;
@@ -99,27 +74,29 @@ void parseStartCommand(String params) {
     pos = nextSpace + 1;
   }
 
-  // Przypisz sparsowane wartości do 'active'
-  if (count >= 3) {
-    active.wireDia = vals[0];
-    active.coilWidth = vals[1];
-    active.totalTurns = (long)vals[2];
-    if (count >= 4)
-      active.targetRPM = (int)vals[3];
-    if (count >= 5)
-      active.rampRPM = (int)vals[4];
-    if (count >= 6)
-      active.startOffset = (long)vals[5];
-
-    initiateWindingProcess();
-  } else {
+  if (count < 3) {
     Serial.println(
         F("ERROR: START requires at least 3 parameters. Syntax:\n"
           "wireDiameter coilWidth turns [targetRPM] [rampRPM] [startOffset])"));
+    return false;
   }
+
+  // Przypisz sparsowane wartości do 'active'
+
+  active.wireDia = vals[0];
+  active.coilWidth = vals[1];
+  active.totalTurns = (long)vals[2];
+  if (count >= 4)
+    active.targetRPM = (int)vals[3];
+  if (count >= 5)
+    active.rampRPM = (int)vals[4];
+  if (count >= 6)
+    active.startOffset = (long)vals[5];
+
+  return true;
 }
 
-void initiateWindingProcess() {
+void initiateWinding() {
   // 1. Walidacja podstawowa
   if (active.totalTurns <= 0 || active.wireDia <= 0 || active.coilWidth <= 0) {
     Serial.println(F("ERROR: Invalid parameters (Wire, Width, or Turns is 0)"));
@@ -175,7 +152,6 @@ void resumeWinding() {
 }
 
 void handleGotoCommand(String cmd) {
-  // ***** TODO: obsolete
   // GOTO <position> [speed] lub GOTO HOME [speed]
   String param = cmd.substring(5);
   param.trim();
@@ -184,19 +160,36 @@ void handleGotoCommand(String cmd) {
   int rpm =
       (spaceIdx == -1) ? cfg.maxRPM_T : param.substring(spaceIdx + 1).toInt();
 
-  activeMotor = 'T';
-  moveRelative = false;
-  moveDelay = rpmToDelay(cfg.maxRPM_T, cfg.stepsPerRevT);
+  long targetStepsAbs = (long)(posStr.toFloat() * stepsPerMM);
 
   if (posStr == F("HOME")) {
     // GOTO HOME zawsze jedzie do punktu startowego aktualnego presetu
-    targetAbsSteps = active.startOffset;
+    targetStepsAbs = active.startOffset;
+    enqueueTask(MOVING, 'T', targetStepsAbs, false, rpm, 0.1);
   } else {
-    targetAbsPos = (long)(posStr.toFloat() * stepsPerMM);
+    targetPos = (long)(posStr.toFloat() * stepsPerMM);
+    enqueueTask(MOVING, 'T', targetPos, true, rpm, 0.1);
+  }
+}
+
+void moveManual(String cmd) {
+  char motor = cmd[0]; // 'W' lub 'T'
+  String param = cmd.substring(2);
+  int spaceIdx = param.indexOf(' ');
+  float val = param.substring(0, spaceIdx).toFloat();
+  int rpm = (spaceIdx == -1) ? 60 : param.substring(spaceIdx + 1).toInt();
+
+  long steps = 0;
+  bool direction;
+
+  if (motor == 'W') {
+    steps = (long)(val * cfg.stepsPerRevW);
+  } else {
+    steps = (long)(val * stepsPerMM);
   }
 
-  state = MOVING;
-  digitalWrite(EN, LOW);
+  // true = ruch relatywny, targetSteps to abs(steps), dir ustawiony
+  enqueueTask(MOVING, motor, steps, true, rpm, 0.1);
 }
 
 void setup() {
@@ -348,31 +341,10 @@ void singleStep(int pin, long dly) {
   delayMicroseconds(dly);
 }
 
-/* moving*/
-// enqueueMoveT and enqueueMoveW is BAD. We should just use enqueueTask() as we
-// can't calculate anything here.
-void enqueueMoveT(long targetAbs, int rpm) {
-  long diff = targetAbs - absPos;
-  if (diff == 0)
+void startTask(Task *t) {
+  if (t->isStarted)
     return;
 
-  // ***** TODO: Nie, określić direction i sprawdzić diff==0 musimy
-  // przeprowadzić na początku zadania (chyba ze ruch jest relative, ale lepiej
-  // tu tego nie ruszajmy, tylko przekopiujmy)
-  bool direction = (diff > 0) ? cfg.dirT : !cfg.dirT;
-
-  enqueueTask(MOVING, 'T', abs(diff), rpm, 0.1, direction);
-
-  virtualPos = targetAbs;
-}
-
-void enqueueMoveW(float turns, int rpm) {
-  long steps = (long)(turns * cfg.stepsPerRevW);
-  digitalWrite(W_DIR, (steps > 0) ? cfg.dirW : !cfg.dirW);
-  enqueueTask(MOVING, 'W', abs(steps), rpm, 0.1);
-}
-
-void startTask(Task *t) {
   if (t->isRelative) {
     t->targetPosition = absPos + t->targetSteps;
     // t->dir already set
@@ -381,6 +353,7 @@ void startTask(Task *t) {
     t->dir = (t->targetPosition > absPos) ? -1 : 1;
   }
 
+  lastStepMicros = micros();
   digitalWrite(EN, LOW); // Prąd na silniki
   t->isStarted = true;
 }
@@ -528,7 +501,7 @@ void updateTaskRamp(Task *t) {
 }
 
 void initiateHoming() {
-  int speed = cfg.useLimitSwitch ? cfg.maxRPM_T : 60;
+  int speed = cfg.useLimitSwitch ? cfg.maxRPM_T : cfg.startRPM_T;
 
   homingPhase = 0;
   isHomed = false;
