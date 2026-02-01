@@ -4,24 +4,40 @@
 
 void loadMachineConfig() {
   EEPROM.get(EEPROM_CONF_ADDR, cfg);
-  if (cfg.stepsPerRevW == -1 || cfg.stepsPerRevW == 0) { // First run defaults
-
+  if (cfg.stepsPerRevW == -1 || cfg.stepsPerRevW == 0) {  // First run defaults
+    Serial.println(F("Loading default configuration."));
+    // fallback config
     cfg = {
-        2.0,   // float screwPitch;
-        1600,  // int stepsPerRevW;
-        1600,  // int stepsPerRevT;
-        600,   // int maxRPM_W;
-        400,   // int maxRPM_T;
-        40,    // int startRPM_W;
-        40,    // int startRPM_T;
-        false, // bool dirW;
-        false, // bool dirT;
-        true,  // bool useLimitSwitch;
-        false  // bool homeBeforeStart;
+      2.0,    // float screwPitch;
+      1600,   // int stepsPerRevW;
+      1600,   // int stepsPerRevT;
+      600,    // int maxRPM_W;
+      400,    // int maxRPM_T;
+      40,     // int startRPM_W;
+      40,     // int startRPM_T;
+      false,  // bool dirW;
+      false,  // bool dirT;
+      true,   // bool useLimitSwitch;
+      false   // bool homeBeforeStart;
     };
 
     EEPROM.put(EEPROM_CONF_ADDR, cfg);
   }
+
+  if (!loadPresetByName("INIT")) {
+    // fallback preset:
+    Serial.println(F("Loading default preset."));
+    active = (WindingPreset){
+      "INIT",  // char name[16];
+      0.1,     // float wireDia;
+      10.0,    // float coilWidth;
+      100,     // long totalTurns;
+      500,     // int targetRPM;
+      10,      // int rampRPM;
+      8000     // long startOffset;
+    };
+  }
+
   updateDerivedValues();
 }
 
@@ -32,7 +48,7 @@ int findPresetIndex(String name) {
     if (String(p.name) == name)
       return i;
     if (p.name[0] == 0)
-      break; // End of list
+      break;  // End of list
   }
   return -1;
 }
@@ -46,7 +62,7 @@ int findFirstEmptyPresetSlot() {
     if (p.name[0] == 0)
       return i;
   }
-  return -1; // EEPROM is full
+  return -1;  // EEPROM is full
 }
 
 void exportCSV() {
@@ -55,8 +71,9 @@ void exportCSV() {
   WindingPreset p;
   for (int i = 0; i < MAX_PRESETS; i++) {
     EEPROM.get(EEPROM_PRESET_START + (i * sizeof(WindingPreset)), p);
-    if (p.name[0] == 0)
+    if (p.name[0] == 0 || (uint8_t)p.name[0] == 255)
       break;
+
     Serial.print(p.name);
     Serial.print(',');
     Serial.print(p.wireDia, 3);
@@ -71,10 +88,11 @@ void exportCSV() {
     Serial.print(',');
     Serial.println(p.startOffset);
   }
+  Serial.println(F("--- CSV EXPORT END ---"));
 }
 
 bool loadPresetByName(String name) {
-  name.replace("\"", ""); // Usuń ewentualne cudzysłowy
+  name.replace("\"", "");  // Usuń ewentualne cudzysłowy
   name.trim();
 
   int index = findPresetIndex(name);
@@ -129,7 +147,7 @@ void savePreset(String name) {
 }
 
 void deletePreset(String name) {
-  name.replace("\"", ""); // Usuń ewentualne cudzysłowy
+  name.replace("\"", "");  // Usuń ewentualne cudzysłowy
   name.trim();
 
   int index = findPresetIndex(name);
