@@ -2,7 +2,7 @@
 #include "kbPickupWinder.h"
 #include "taskqueue.h"
 
-SoftwareSerial nextionSerial(2, 3);
+// SoftwareSerial nextionSerial(2, 3);
 
 // --- GLOBAL STATE ---
 
