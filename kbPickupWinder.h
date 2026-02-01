@@ -16,17 +16,3 @@
 #define LIMIT_PIN 4
 
 enum MachineState { IDLE, RUNNING, PAUSED, HOMING, MOVING, ERROR };
-
-// --- STRUCTURES ---
-
-struct MachineConfig {
-  float screwPitch;
-  int stepsPerRevW;
-  int stepsPerRevT;
-  int maxRPM_W;
-  int maxRPM_T;
-  bool dirW;
-  bool dirT;
-  bool useLimitSwitch;
-  bool homeBeforeStart;
-};
