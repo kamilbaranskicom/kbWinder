@@ -125,17 +125,7 @@ void printStatus() {
     Serial.println(F("State: IDLE"));
   } else {
     Serial.print(F("Current Task: "));
-    switch (t->state) {
-      case HOMING:
-        Serial.print(F("HOMING"));
-        break;
-      case MOVING:
-        Serial.print(F("MOVING"));
-        break;
-      case RUNNING:
-        Serial.print(F("WINDING"));
-        break;
-    }
+    Serial.print(getTaskStateStr(t->state));
     Serial.print(F(" ("));
     Serial.print(taskCount);
     Serial.println(F(" in queue)"));
@@ -147,7 +137,7 @@ void printStatus() {
       // Jeśli zadanie się zaczęło i targetSteps to 0, to znaczy że jesteśmy u celu
       progress = 100.0;
     }
-    
+
     Serial.print(F("Progress: "));
     Serial.print(progress, 1);
     Serial.println(F("%"));
