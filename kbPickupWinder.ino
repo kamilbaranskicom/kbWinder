@@ -182,15 +182,12 @@ void handleGotoCommand(String cmd) {
   int rpm =
       (spaceIdx == -1) ? cfg.maxRPM_T : param.substring(spaceIdx + 1).toInt();
 
-  long targetStepsAbs = (long)(posStr.toFloat() * stepsPerMM);
-
   if (posStr == F("HOME")) {
     // GOTO HOME zawsze jedzie do punktu startowego aktualnego presetu
-    targetStepsAbs = active.startOffset;
-    enqueueTask(MOVING, 'T', targetStepsAbs, false, rpm, 0.1);
+    enqueueTask(MOVING, 'T', active.startOffset, false, rpm, 0.1);
   } else {
-    long targetPos = (long)(posStr.toFloat() * stepsPerMM);
-    enqueueTask(MOVING, 'T', targetPos, true, rpm, 0.1);
+    long targetPosInSteps = (long)(posStr.toFloat() * stepsPerMM);
+    enqueueTask(MOVING, 'T', targetPosInSteps, false, rpm, 0.1);
   }
 }
 
@@ -198,7 +195,7 @@ void moveManual(String cmd) {
   char motor = cmd[0]; // 'W' lub 'T'
   String param = cmd.substring(2);
   int spaceIdx = param.indexOf(' ');
-  float val = param.substring(0, spaceIdx).toFloat();
+  float val = (spaceIdx == -1) ? param.toFloat() : param.substring(0, spaceIdx).toFloat();
   int rpm = (spaceIdx == -1) ? 60 : param.substring(spaceIdx + 1).toInt();
 
   long steps = 0;
