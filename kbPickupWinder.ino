@@ -1,10 +1,14 @@
 #include "eeprom.h"
 #include "kbPickupWinder.h"
+#include "serial.h"
 #include "taskqueue.h"
+#include "variables.h"
 
 // SoftwareSerial nextionSerial(2, 3);
 
 // --- GLOBAL STATE ---
+
+bool isPauseRequested = false;
 
 float stepsPerMM;
 long absPos = 0; // Traverse steps from 0
@@ -123,7 +127,7 @@ void initiateWinding() {
   // enqueueMoveT(active.startOffset, cfg.maxRPM_T);
   // TODO:
   // taskState, motor, targetPosition, isRelative=false, rpm, ramp
-  enqueueTask(MOVING, 'T', active.startOffset, false, cfg.maxRPM_T, 0.1))
+  enqueueTask(MOVING, 'T', active.startOffset, false, cfg.maxRPM_T, 0.1);
 
   // KROK 3: Nawijanie (na końcu kolejki)
   float rampValue = (float)active.rampRPM / 1000.0; // Scale ramp for engine
@@ -141,20 +145,30 @@ void initiateWinding() {
 // --- CORE FUNCTIONS: PAUSE & RESUME ---
 
 void pauseTask() {
-  // ***** TODO
+  Task *t = getCurrentTask();
+  // Pauzujemy tylko jeśli coś się faktycznie rusza
+  if (t == NULL || t->state == PAUSED || t->state == IDLE)
+    return;
+
+  isPauseRequested = true;
+  Serial.println(F("MSG: Soft pause initiated..."));
 }
 
 void resumeTask() {
-  // ***** TODO: obsolete. resumeTask should resume current Task and not winding
-  // ;)
-  if (state == PAUSED) {
-    // currentRPM = (motor=='W') ? cfg.startRPM_W : cfg.startRPM_T; // Restart
-    // from slow speed; obsolete, but use this speeds
-    windingDelay = rpmToDelay(currentRPM);
-    state = RUNNING;
-    digitalWrite(EN, LOW); // Motors back online
-    Serial.println(F("MSG: Resuming with ramp-up"));
-  }
+  Task *t = getCurrentTask();
+  if (t == NULL || t->state != PAUSED)
+    return;
+
+  // Przywracamy stan sprzed pauzy (HOMING, MOVING lub RUNNING)
+  t->state = t->prevState;
+
+  t->currentRPM = t->startRPM;
+  t->isDecelerating = false;
+  isPauseRequested = false;
+
+  digitalWrite(EN, LOW);
+  lastStepMicros = micros();
+  Serial.println(F("MSG: Task resumed"));
 }
 
 // --- CORE FUNCTIONS: GOTO HOME, W, T ---
@@ -175,7 +189,7 @@ void handleGotoCommand(String cmd) {
     targetStepsAbs = active.startOffset;
     enqueueTask(MOVING, 'T', targetStepsAbs, false, rpm, 0.1);
   } else {
-    targetPos = (long)(posStr.toFloat() * stepsPerMM);
+    long targetPos = (long)(posStr.toFloat() * stepsPerMM);
     enqueueTask(MOVING, 'T', targetPos, true, rpm, 0.1);
   }
 }
@@ -212,10 +226,14 @@ void setup() {
   digitalWrite(EN, HIGH);
 
   Serial.begin(57600);
-  nextionSerial.begin(9600);
+  Serial.println(F("\n\n--- kbPickupWinder OS V0.1 ---"));
+
+  // nextionSerial.begin(9600);
   loadMachineConfig();
 
-  Serial.println(F("--- kbPickupWinder OS V0.1 ---"));
+  Serial.println(F("At your service, Your Majesty!\n"));
+  printHelp();
+  Serial.println();
 }
 
 void loop() {
@@ -247,7 +265,8 @@ void initiateHoming() {
 }
 
 void startSeekingZero(String cmd) {
-  String speedPart = cmd.substring(9);
+  // obsolete
+  /*String speedPart = cmd.substring(9);
   speedPart.trim();
 
   int rpm;
@@ -271,98 +290,99 @@ void startSeekingZero(String cmd) {
 
   Serial.print(F("MSG: Seeking ZERO at "));
   Serial.print(currentRPM);
-  Serial.println(F(" RPM"));
+  Serial.println(F(" RPM"));*/
 }
 
 void performSeekZero(Task *current) {
-  if (homingPhase == 0) {
-    // Phase 0: Searching for limit switch
-    // Check if switch hit (if enabled)
-    if (cfg.useLimitSwitch && digitalRead(LIMIT_PIN) == LOW) {
-      absPos = 0;
-      isHomed = true;
-      homingPhase = 1;
-      backoffStepsLeft = 800; // Move back 1mm (800 steps for 2mm pitch)
-      digitalWrite(T_DIR, cfg.dirT ? HIGH : LOW); // Flip direction
-      Serial.println(F("MSG: Switch hit. Backing off..."));
-    } else {
-      // Perform a single step toward zero
-      digitalWrite(T_STEP, HIGH);
-      delayMicroseconds(homingDelay);
-      digitalWrite(T_STEP, LOW);
-      delayMicroseconds(homingDelay);
-      // Note: In Phase 0 we don't necessarily update absPos until it's set to
-      // 0
-    }
-  } else if (homingPhase == 1) {
-    // Phase 1: Backing off for precision
-    if (backoffStepsLeft > 0) {
-      digitalWrite(T_STEP, HIGH);
-      delayMicroseconds(homingDelay);
-      digitalWrite(T_STEP, LOW);
-      delayMicroseconds(homingDelay);
+  /*  if (homingPhase == 0) {
+      // Phase 0: Searching for limit switch
+      // Check if switch hit (if enabled)
+      if (cfg.useLimitSwitch && digitalRead(LIMIT_PIN) == LOW) {
+        absPos = 0;
+        isHomed = true;
+        homingPhase = 1;
+        backoffStepsLeft = 800; // Move back 1mm (800 steps for 2mm pitch)
+        digitalWrite(T_DIR, cfg.dirT ? HIGH : LOW); // Flip direction
+        Serial.println(F("MSG: Switch hit. Backing off..."));
+      } else {
+        // Perform a single step toward zero
+        digitalWrite(T_STEP, HIGH);
+        delayMicroseconds(homingDelay);
+        digitalWrite(T_STEP, LOW);
+        delayMicroseconds(homingDelay);
+        // Note: In Phase 0 we don't necessarily update absPos until it's set to
+        // 0
+      }
+    } else if (homingPhase == 1) {
+      // Phase 1: Backing off for precision
+      if (backoffStepsLeft > 0) {
+        digitalWrite(T_STEP, HIGH);
+        delayMicroseconds(homingDelay);
+        digitalWrite(T_STEP, LOW);
+        delayMicroseconds(homingDelay);
 
-      backoffStepsLeft--;
-      absPos += cfg.dirT ? 1 : -1;
-    } else {
-      state = IDLE;
-      Serial.print(F("MSG: Zero established. Position: "));
-      Serial.println(absPos / stepsPerMM);
+        backoffStepsLeft--;
+        absPos += cfg.dirT ? 1 : -1;
+      } else {
+        state = IDLE;
+        Serial.print(F("MSG: Zero established. Position: "));
+        Serial.println(absPos / stepsPerMM);
+      }
     }
-  }
+    */
 }
 
 void performMovingStep(Task *current) {
   // obsolete
-  bool finished = false;
-  long dly =
-      rpmToDelay(current->rpm,
-                 (current->motor == 'W' ? cfg.stepsPerRevW : cfg.stepsPerRevT));
+  /*  bool finished = false;
+    long dly =
+        rpmToDelay(current->rpm,
+                   (current->motor == 'W' ? cfg.stepsPerRevW :
+    cfg.stepsPerRevT));
 
-  if (current->motor == 'T') {
-    if (current->relative) { // Ruch T <distance>
+    if (current->motor == 'T') {
+      if (current->relative) { // Ruch T <distance>
+        if (moveStepsLeft != 0) {
+          digitalWrite(T_DIR, (moveStepsLeft > 0) ? cfg.dirT : !cfg.dirT);
+          singleStep(T_STEP, dly);
+          absPos += (moveStepsLeft > 0) ? 1 : -1;
+          moveStepsLeft += (moveStepsLeft > 0) ? -1 : 1;
+        } else {
+          finished = true;
+        }
+      } else { // Ruch GOTO <position>
+        if (absPos != current->target) {
+          digitalWrite(T_DIR, (current->target > absPos) ? cfg.dirT :
+    !cfg.dirT); singleStep(T_STEP, dly); absPos += (current->target > absPos) ?
+    1 : -1; } else { finished = true;
+        }
+      }
+    } else if (activeMotor == 'W') { // Ruch W <distance>
       if (moveStepsLeft != 0) {
-        digitalWrite(T_DIR, (moveStepsLeft > 0) ? cfg.dirT : !cfg.dirT);
-        singleStep(T_STEP, dly);
-        absPos += (moveStepsLeft > 0) ? 1 : -1;
+        digitalWrite(W_DIR, (moveStepsLeft > 0) ? cfg.dirW : !cfg.dirW);
+        singleStep(W_STEP, dly);
         moveStepsLeft += (moveStepsLeft > 0) ? -1 : 1;
-      } else {
-        finished = true;
-      }
-    } else { // Ruch GOTO <position>
-      if (absPos != current->target) {
-        digitalWrite(T_DIR, (current->target > absPos) ? cfg.dirT : !cfg.dirT);
-        singleStep(T_STEP, dly);
-        absPos += (current->target > absPos) ? 1 : -1;
-      } else {
-        finished = true;
-      }
-    }
-  } else if (activeMotor == 'W') { // Ruch W <distance>
-    if (moveStepsLeft != 0) {
-      digitalWrite(W_DIR, (moveStepsLeft > 0) ? cfg.dirW : !cfg.dirW);
-      singleStep(W_STEP, dly);
-      moveStepsLeft += (moveStepsLeft > 0) ? -1 : 1;
 
-      // Jeśli odwijamy na pauzie, aktualizujemy postęp nawijania
-      if (isPaused) {
-        if (moveStepsLeft > 0)
-          currentStepsW++;
-        else
-          currentStepsW--;
+        // Jeśli odwijamy na pauzie, aktualizujemy postęp nawijania
+        if (isPaused) {
+          if (moveStepsLeft > 0)
+            currentStepsW++;
+          else
+            currentStepsW--;
+        }
+      } else {
+        finished = true;
       }
-    } else {
-      finished = true;
     }
-  }
-  if (finished) {
-    popState();
-    if (!isPaused) { // wtf?
-      digitalWrite(EN,
-                   HIGH); // Offline tylko jeśli nie jesteśmy w trybie pauzy
+    if (finished) {
+      popState();
+      if (!isPaused) { // wtf?
+        digitalWrite(EN,
+                     HIGH); // Offline tylko jeśli nie jesteśmy w trybie pauzy
+      }
+      Serial.println(F("MSG: Move completed"));
     }
-    Serial.println(F("MSG: Move completed"));
-  }
+    */
 }
 
 void singleStep(int pin, long dly) {
@@ -380,13 +400,15 @@ void startTask(Task *t) {
     return;
 
   if (t->isRelative) {
-    t->targetPosition = absPos + t->targetSteps;
+    t->targetPosition =
+        absPos + (t->dir == 1 ? t->targetSteps : -t->targetSteps);
     // t->dir already set
   } else {
-    t->targetSteps = abs(t->targetPosition - absPos);
-    t->dir = (t->targetPosition > absPos) ? -1 : 1;
+    long diff = t->targetPosition - absPos;
+    t->targetSteps = abs(diff);
+    t->dir = (diff >= 0) ? 1 : -1;
   }
-
+  t->currentRPM = t->startRPM;
   lastStepMicros = micros();
   digitalWrite(EN, LOW); // Prąd na silniki
   t->isStarted = true;
@@ -402,6 +424,16 @@ void executeMotion(Task *t) {
 
   if (!t->isStarted) {
     startTask(t);
+  }
+
+  // Jeśli trwa hamowanie do pauzy i osiągnęliśmy prędkość minimalną
+  if (isPauseRequested && t->currentRPM <= t->startRPM) {
+    t->prevState = t->state; // Zapamiętaj czy to był RUNNING, MOVING czy HOMING
+    t->state = PAUSED;
+    isPauseRequested = false;
+    digitalWrite(EN, HIGH); // Odłącz prąd (bezpieczeństwo i chłodzenie)
+    Serial.println(F("MSG: Status set to PAUSED"));
+    return;
   }
 
   unsigned long now = micros();
@@ -493,31 +525,29 @@ void stepActiveMotor(Task *t) {
 }
 
 void updateTaskRamp(Task *t) {
-  // Homing doesn't use deceleration because we don't know where the switch is
-  if (t->state == HOMING && homingPhase == 0) {
-    if (t->currentRPM < t->targetRPM) {
-      t->currentRPM += t->accelRate;
-      if (t->currentRPM > t->targetRPM)
-        t->currentRPM = t->targetRPM;
-    }
-    return;
-  }
-
   long stepsRemaining = t->targetSteps - t->currentSteps;
 
-  // 1. Logika hamowania (Deceleration)
-  if (stepsRemaining <= t->accelDistance || t->isDecelerating) {
+  // Flaga wymuszająca hamowanie: albo żądanie pauzy, albo naturalny koniec
+  // rampy
+  bool forceDecel = isPauseRequested || t->isDecelerating;
+
+  // Hamujemy przy dojeździe do celu TYLKO jeśli to nie jest faza szukania
+  // switcha
+  bool arrivalDecel = (t->state != HOMING || homingPhase != 0) &&
+                      (stepsRemaining <= t->accelDistance);
+
+  if (forceDecel || arrivalDecel) {
     t->isDecelerating = true;
     if (t->currentRPM > t->startRPM) {
-      t->currentRPM -= t->accelRate;
+      // Przy pauzie możemy hamować nieco szybciej (accelRate * 3)
+      float decelStep = isPauseRequested ? (t->accelRate * 3.0) : t->accelRate;
+      t->currentRPM -= decelStep;
       if (t->currentRPM < t->startRPM)
         t->currentRPM = t->startRPM;
     }
-  }
-  // 2. Logika przyspieszania (Acceleration)
-  else if (t->currentRPM < t->targetRPM) {
+  } else if (t->currentRPM < t->targetRPM) {
     t->currentRPM += t->accelRate;
-    t->accelDistance++; // Dystans potrzebny na rozpędzenie
+    t->accelDistance++;
     if (t->currentRPM > t->targetRPM)
       t->currentRPM = t->targetRPM;
   }
@@ -559,9 +589,10 @@ void emergencyStop(bool userAsked) {
 }
 
 void handleTaskEnd(Task *t) {
-  if (t->currentSteps >= t->targetSteps) {
+  if (t->currentSteps >= t->targetSteps || t->targetSteps <= 0) {
     t->isComplete = true;
     dequeueTask();
+
     if (taskCount == 0)
       digitalWrite(EN, HIGH);
 
