@@ -2,8 +2,28 @@
 
 // --- QUEUE HELPERS ---
 
+void debugEnqueueTask(MachineState s, char m, long target, bool isRelative,
+                      int rpm, float ramp) {
+  Serial.print("Enqueue task: (");
+  Serial.print(s);
+  Serial.print(", ");
+  Serial.print(m);
+  Serial.print(", ");
+  Serial.print(target);
+  Serial.print(", ");
+  Serial.print(isRelative);
+  Serial.print(", ");
+  Serial.print(rpm);
+  Serial.print(", ");
+  Serial.print(ramp);
+  Serial.println(")");
+}
+
 bool enqueueTask(MachineState s, char m, long target, bool isRelative, int rpm,
                  float ramp) {
+
+  debugEnqueueTask(s, m, target, isRelative, rpm, ramp);
+
   if (taskCount < QUEUE_SIZE) {
     Task &t = taskQueue[tail];
     t.state = s;
@@ -20,10 +40,10 @@ bool enqueueTask(MachineState s, char m, long target, bool isRelative, int rpm,
     t.currentSteps = 0;
     t.accelDistance = 0;
     t.startRPM =
-        (t.motor == 'W')
-            ? cfg.startRPM_W
-            : cfg.startRPM_T; // or should we ask active preset for this, as
-                              // wire diameter may affect startRPM?
+      (t.motor == 'W')
+        ? cfg.startRPM_W
+        : cfg.startRPM_T;  // or should we ask active preset for this, as
+                           // wire diameter may affect startRPM?
     t.targetRPM = (float)rpm;
     t.currentRPM = t.startRPM;
     t.accelRate = ramp;
@@ -43,6 +63,24 @@ Task *getCurrentTask() {
   if (taskCount > 0)
     return &taskQueue[head];
   return NULL;
+}
+
+String getTaskStateStr(MachineState state) {
+  switch (state) {
+    case HOMING:
+      return F("HOMING");
+    case MOVING:
+      return F("MOVING");
+    case RUNNING:
+      return F("WINDING");
+    case IDLE:
+      return F("IDLE");
+    case PAUSED:
+      return F("PAUSE");
+    case ERROR:
+      return F("ERROR");
+  }
+  return "";
 }
 
 void dequeueTask() {
