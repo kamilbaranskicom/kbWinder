@@ -39,7 +39,7 @@ long rpmToDelay(int rpm) {
   return 30000000L / ((long)rpm * cfg.stepsPerRevW);
 }
 
-// --- CORE FUNCTIONS ---
+// --- CORE FUNCTIONS: START ---
 
 void parseStartCommand(String params) {
   params.trim();
@@ -138,7 +138,13 @@ void initiateWinding() {
   printStatus();
 }
 
-void resumeWinding() {
+// --- CORE FUNCTIONS: PAUSE & RESUME ---
+
+void pauseTask() {
+  // ***** TODO
+}
+
+void resumeTask() {
   // ***** TODO: obsolete. resumeTask should resume current Task and not winding
   // ;)
   if (state == PAUSED) {
@@ -150,6 +156,8 @@ void resumeWinding() {
     Serial.println(F("MSG: Resuming with ramp-up"));
   }
 }
+
+// --- CORE FUNCTIONS: GOTO HOME, W, T ---
 
 void handleGotoCommand(String cmd) {
   // GOTO <position> [speed] lub GOTO HOME [speed]
@@ -192,6 +200,8 @@ void moveManual(String cmd) {
   enqueueTask(MOVING, motor, steps, true, rpm, 0.1);
 }
 
+// --- CORE FUNCTIONS: SETUP & LOOP ---
+
 void setup() {
   pinMode(EN, OUTPUT);
   pinMode(W_STEP, OUTPUT);
@@ -213,6 +223,27 @@ void loop() {
     processCommand(Serial.readStringUntil('\n'));
   }
   executeMotion(getCurrentTask());
+}
+
+// --- CORE FUNCTIONS: SEEK ZERO ---
+
+void initiateHoming() {
+  int speed = cfg.useLimitSwitch ? cfg.maxRPM_T : cfg.startRPM_T;
+
+  homingPhase = 0;
+  isHomed = false;
+
+  digitalWrite(EN, LOW);
+  // Ustawienie kierunku w stronę krańcówki
+  digitalWrite(T_DIR, cfg.dirT ? LOW : HIGH);
+
+  // taskState, motor, targetSteps=1M steps (as a safety limit),
+  // isRelative=true, rpm, ramp
+  enqueueTask(HOMING, 'T', 1000000L, true, speed, 0.05);
+
+  Serial.print(F("MSG: Homing added to queue at "));
+  Serial.print(speed);
+  Serial.println(F(" RPM..."));
 }
 
 void startSeekingZero(String cmd) {
@@ -341,6 +372,9 @@ void singleStep(int pin, long dly) {
   delayMicroseconds(dly);
 }
 
+// --- HANDLE ACTUAL TASK OPERATIONS ---
+// startTask(), executeMotion(), stepActiveMotor(), updateTaskRamp()
+
 void startTask(Task *t) {
   if (t->isStarted)
     return;
@@ -458,17 +492,6 @@ void stepActiveMotor(Task *t) {
   }
 }
 
-void emergencyStop(bool userAsked) {
-  digitalWrite(EN, HIGH); // Offline motors
-  clearQueue();
-  if (userAsked) {
-    Serial.println(F("Manual stop, queue cleared."));
-  } else {
-    Serial.println(
-        F("ALARM: EMERGENCY STOP! Limit switch hit. Queue cleared."));
-  }
-}
-
 void updateTaskRamp(Task *t) {
   // Homing doesn't use deceleration because we don't know where the switch is
   if (t->state == HOMING && homingPhase == 0) {
@@ -500,25 +523,6 @@ void updateTaskRamp(Task *t) {
   }
 }
 
-void initiateHoming() {
-  int speed = cfg.useLimitSwitch ? cfg.maxRPM_T : cfg.startRPM_T;
-
-  homingPhase = 0;
-  isHomed = false;
-
-  digitalWrite(EN, LOW);
-  // Ustawienie kierunku w stronę krańcówki
-  digitalWrite(T_DIR, cfg.dirT ? LOW : HIGH);
-
-  // taskState, motor, targetSteps=1M steps (as a safety limit),
-  // isRelative=true, rpm, ramp
-  enqueueTask(HOMING, 'T', 1000000L, true, speed, 0.05);
-
-  Serial.print(F("MSG: Homing added to queue at "));
-  Serial.print(speed);
-  Serial.println(F(" RPM..."));
-}
-
 void handleHomingLogic(Task *t) {
   if (t->state == HOMING && homingPhase == 0) {
     if (cfg.useLimitSwitch && digitalRead(LIMIT_PIN) == LOW) {
@@ -538,6 +542,19 @@ void handleHomingLogic(Task *t) {
       Serial.print(backoffDistanceMM);
       Serial.println(F(" mm"));
     }
+  }
+}
+
+// --- CORE FUNCTIONS: STOP & CLOSING TASK ---
+
+void emergencyStop(bool userAsked) {
+  digitalWrite(EN, HIGH); // Offline motors
+  clearQueue();
+  if (userAsked) {
+    Serial.println(F("Manual stop, queue cleared."));
+  } else {
+    Serial.println(
+        F("ALARM: EMERGENCY STOP! Limit switch hit. Queue cleared."));
   }
 }
 
