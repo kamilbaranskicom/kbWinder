@@ -44,11 +44,23 @@ bool enqueueTask(MachineState s, char m, long target, bool isRelative, int rpm,
   }
   t.currentSteps = 0;
   t.accelDistance = 0;
+
+  int absoluteMax = (m == 'W' || m == 'S') ? cfg.maxRPM_W : cfg.maxRPM_T;
+  if (rpm > absoluteMax) {
+    Serial.println("WARNING: Requested RPM exceeds maximum. Limiting to max.");
+    rpm = absoluteMax;
+  };
+
   t.startRPM = (t.motor == 'W')
                    ? cfg.startRPM_W
                    : cfg.startRPM_T; // or should we ask active preset for this,
                                      // as wire diameter may affect startRPM?
   t.targetRPM = (float)rpm;
+
+  if (t.startRPM > t.targetRPM) {
+    t.startRPM = t.targetRPM / 2; // safe startRPM when target is low
+  }
+
   t.currentRPM = t.startRPM;
   t.accelRate = ramp;
   t.isStarted = false;

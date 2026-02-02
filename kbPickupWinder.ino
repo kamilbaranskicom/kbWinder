@@ -115,7 +115,7 @@ void initiateWinding() {
   float rampValue = (float)active.rampRPM / 1000.0; // Scale ramp for engine
   // taskState, motor, targetSteps, isRelative=true, rpm, ramp
   enqueueTask(RUNNING, 'S', active.totalTurns * cfg.stepsPerRevW, true,
-              active.targetRPM, rampValue);
+              getMaxRPMForCurrentPreset(), rampValue);
 
   Serial.println(F("MSG: Winding sequence enqueued."));
 
@@ -124,6 +124,29 @@ void initiateWinding() {
   printStatus();
 }
 
+float getMaxRPMForCurrentPreset() {
+  // 1. Sprawdź limit nawijarki (Winder)
+  float safeRPM = (float)active.targetRPM;
+  if (safeRPM > cfg.maxRPM_W) {
+    safeRPM = cfg.maxRPM_W;
+    Serial.print(F("MSG: Capping RPM to Winder Max: "));
+    Serial.println(cfg.maxRPM_W);
+  }
+
+  // 2. Sprawdź limit prowadnicy (Traverse)
+  // MaxWinderRPM = MaxTraverseRPM * (ScrewPitch / WireDia)
+  if (active.wireDia > 0) {
+    float maxWinderByTraverse =
+        (float)cfg.maxRPM_T * (cfg.screwPitch / active.wireDia);
+
+    if (safeRPM > maxWinderByTraverse) {
+      safeRPM = maxWinderByTraverse;
+      Serial.print(F("WARNING: Wire too thick! Capping Winder RPM to: "));
+      Serial.println(safeRPM);
+    }
+  }
+  return safeRPM;
+}
 // --- CORE FUNCTIONS: PAUSE & RESUME ---
 
 void pauseTask() {
@@ -279,120 +302,6 @@ void parseSeekZeroCommand(String cmd) {
                              : 60; // 60 RPM is safe for manual STOP
   }
   initiateHoming(rpm);
-
-  /*
-  // Initializing Homing State
-  currentRPM = rpm;
-  homingDelay = 30000000L / ((long)currentRPM * cfg.stepsPerRevT);
-  homingPhase = 0;
-  state = HOMING;
-
-  digitalWrite(EN, LOW);
-  // Direction: move towards home (reverse of cfg.dirT)
-  digitalWrite(T_DIR, cfg.dirT ? LOW : HIGH);
-
-  Serial.print(F("MSG: Seeking ZERO at "));
-  Serial.print(currentRPM);
-  Serial.println(F(" RPM"));*/
-}
-
-void performSeekZero(Task *current) {
-  /*  if (homingPhase == 0) {
-      // Phase 0: Searching for limit switch
-      // Check if switch hit (if enabled)
-      if (cfg.useLimitSwitch && digitalRead(LIMIT_PIN) == LOW) {
-        absPos = 0;
-        isHomed = true;
-        homingPhase = 1;
-        backoffStepsLeft = 800; // Move back 1mm (800 steps for 2mm pitch)
-        digitalWrite(T_DIR, cfg.dirT ? HIGH : LOW); // Flip direction
-        Serial.println(F("MSG: Switch hit. Backing off..."));
-      } else {
-        // Perform a single step toward zero
-        digitalWrite(T_STEP, HIGH);
-        delayMicroseconds(homingDelay);
-        digitalWrite(T_STEP, LOW);
-        delayMicroseconds(homingDelay);
-        // Note: In Phase 0 we don't necessarily update absPos until it's set to
-        // 0
-      }
-    } else if (homingPhase == 1) {
-      // Phase 1: Backing off for precision
-      if (backoffStepsLeft > 0) {
-        digitalWrite(T_STEP, HIGH);
-        delayMicroseconds(homingDelay);
-        digitalWrite(T_STEP, LOW);
-        delayMicroseconds(homingDelay);
-
-        backoffStepsLeft--;
-        absPos += cfg.dirT ? 1 : -1;
-      } else {
-        state = IDLE;
-        Serial.print(F("MSG: Zero established. Position: "));
-        Serial.println(absPos / stepsPerMM);
-      }
-    }
-    */
-}
-
-void performMovingStep(Task *current) {
-  // obsolete
-  /*  bool finished = false;
-    long dly =
-        rpmToDelay(current->rpm,
-                   (current->motor == 'W' ? cfg.stepsPerRevW :
-    cfg.stepsPerRevT));
-
-    if (current->motor == 'T') {
-      if (current->relative) { // Ruch T <distance>
-        if (moveStepsLeft != 0) {
-          digitalWrite(T_DIR, (moveStepsLeft > 0) ? cfg.dirT : !cfg.dirT);
-          singleStep(T_STEP, dly);
-          absPos += (moveStepsLeft > 0) ? 1 : -1;
-          moveStepsLeft += (moveStepsLeft > 0) ? -1 : 1;
-        } else {
-          finished = true;
-        }
-      } else { // Ruch GOTO <position>
-        if (absPos != current->target) {
-          digitalWrite(T_DIR, (current->target > absPos) ? cfg.dirT :
-    !cfg.dirT); singleStep(T_STEP, dly); absPos += (current->target > absPos) ?
-    1 : -1; } else { finished = true;
-        }
-      }
-    } else if (activeMotor == 'W') { // Ruch W <distance>
-      if (moveStepsLeft != 0) {
-        digitalWrite(W_DIR, (moveStepsLeft > 0) ? cfg.dirW : !cfg.dirW);
-        singleStep(W_STEP, dly);
-        moveStepsLeft += (moveStepsLeft > 0) ? -1 : 1;
-
-        // Jeśli odwijamy na pauzie, aktualizujemy postęp nawijania
-        if (isPaused) {
-          if (moveStepsLeft > 0)
-            currentStepsW++;
-          else
-            currentStepsW--;
-        }
-      } else {
-        finished = true;
-      }
-    }
-    if (finished) {
-      popState();
-      if (!isPaused) { // wtf?
-        digitalWrite(EN,
-                     HIGH); // Offline tylko jeśli nie jesteśmy w trybie pauzy
-      }
-      Serial.println(F("MSG: Move completed"));
-    }
-    */
-}
-
-void singleStep(int pin, long dly) {
-  digitalWrite(pin, HIGH);
-  delayMicroseconds(dly);
-  digitalWrite(pin, LOW);
-  delayMicroseconds(dly);
 }
 
 // --- HANDLE ACTUAL TASK OPERATIONS ---
@@ -446,7 +355,7 @@ void executeMotion(Task *t) {
   // Select Master Motor for timing calculation
   int spr = (t->state == RUNNING || t->motor == 'W') ? cfg.stepsPerRevW
                                                      : cfg.stepsPerRevT;
-  long currentDelay = 30000000L / ((long)t->currentRPM * spr);
+  unsigned long currentDelay = 60000000L / ((unsigned long)t->currentRPM * spr);
 
   if (now - lastStepMicros >= currentDelay) {
     lastStepMicros = now;
@@ -587,7 +496,7 @@ void handleHomingLogic(Task *t) {
       if (homingPhase == 0) {
         homingPhase = 1;
         t->currentSteps = 0;
-        t->targetSteps = (long)(backoffDistanceMM * stepsPerMM);
+        t->targetSteps = (long)(cfg.backoffDistanceMM * stepsPerMM);
         t->dir = -t->dir;
         digitalWrite(T_DIR, (t->dir == 1) ? cfg.dirT : !cfg.dirT);
         Serial.println(F("MSG: Switch hit. Phase 1 (Backoff)"));
@@ -608,7 +517,7 @@ void handleHomingLogic(Task *t) {
 
     // ZABEZPIECZENIE 2: Zamiast 999999, dajemy np. 2x backoffDistance.
     // Jeśli w tym dystansie nie trafi w switch, znaczy że coś jest nie tak.
-    t->targetSteps = (long)(backoffDistanceMM * 2.0 * stepsPerMM);
+    t->targetSteps = (long)(cfg.backoffDistanceMM * 2.0 * stepsPerMM);
 
     t->targetRPM = 20.0;
     t->currentRPM = 20.0;

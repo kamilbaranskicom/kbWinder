@@ -4,7 +4,7 @@
 
 void loadMachineConfiguration() {
   EEPROM.get(EEPROM_CONF_ADDR, cfg);
-  if (areAnySettingNonsense(cfg)) {  // First run defaults
+  if (areAnySettingNonsense(cfg)) { // First run defaults
     loadFallbackConfiguration();
   }
 
@@ -12,13 +12,13 @@ void loadMachineConfiguration() {
     // fallback preset:
     Serial.println(F("Loading default preset."));
     active = (WindingPreset){
-      "INIT",  // char name[16];
-      0.1,     // float wireDia;
-      10.0,    // float coilWidth;
-      1000,     // long totalTurns;
-      500,     // int targetRPM;
-      10,      // int rampRPM;
-      8000     // long startOffset;
+        "INIT", // char name[16];
+        0.1,    // float wireDia;
+        10.0,   // float coilWidth;
+        1000,   // long totalTurns;
+        500,    // int targetRPM;
+        10,     // int rampRPM;
+        8000    // long startOffset;
     };
   }
 
@@ -29,44 +29,49 @@ void loadFallbackConfiguration() {
   Serial.println(F("Loading default configuration."));
   // fallback config
   cfg = {
-    1.0,    // float screwPitch;
-    1600,   // int stepsPerRevW;
-    1600,   // int stepsPerRevT;
-    120,    // int maxRPM_W;
-    150,    // int maxRPM_T;
-    40,     // int startRPM_W;
-    40,     // int startRPM_T;
-    false,  // bool dirW;
-    false,  // bool dirT;
-    true,   // bool useLimitSwitch;
-    false,  // bool homeBeforeStart;
-    true,   // bool useStartOffset;
-    2       // float backoffDistanceMM;
+      1.0,   // float screwPitch;
+      1600,  // int stepsPerRevW;
+      1600,  // int stepsPerRevT;
+      120,   // int maxRPM_W;
+      150,   // int maxRPM_T;
+      40,    // int startRPM_W;
+      40,    // int startRPM_T;
+      false, // bool dirW;
+      false, // bool dirT;
+      true,  // bool useLimitSwitch;
+      false, // bool homeBeforeStart;
+      true,  // bool useStartOffset;
+      2      // float backoffDistanceMM;
   };
   saveMachineConfiguration();
 }
 
-void saveMachineConfiguration() {
-  EEPROM.put(EEPROM_CONF_ADDR, cfg);
-}
+void saveMachineConfiguration() { EEPROM.put(EEPROM_CONF_ADDR, cfg); }
 
 bool areAnySettingNonsense(const MachineConfig &c) {
   // 1. Screw pitch nie może być zerem ani ujemny (standard to 1.0 - 5.0)
-  if (c.screwPitch <= 0.01 || c.screwPitch > 50.0) return true;
+  if (c.screwPitch <= 0.01 || c.screwPitch > 50.0)
+    return true;
 
   // 2. Kroki na obrót (zazwyczaj 200, 400, 800, 1600, 3200)
-  if (c.stepsPerRevW < 200 || c.stepsPerRevW > 10000) return true;
-  if (c.stepsPerRevT < 200 || c.stepsPerRevT > 10000) return true;
+  if (c.stepsPerRevW < 200 || c.stepsPerRevW > 10000)
+    return true;
+  if (c.stepsPerRevT < 200 || c.stepsPerRevT > 10000)
+    return true;
 
   // 3. RPM-y: jeśli są ujemne lub absurdalnie wysokie (np. błąd odczytu float)
-  if (c.maxRPM_W <= 5 || c.maxRPM_W > 4000) return true;
-  if (c.maxRPM_T <= 5 || c.maxRPM_T > 4000) return true;
+  if (c.maxRPM_W <= 5 || c.maxRPM_W > 4000)
+    return true;
+  if (c.maxRPM_T <= 5 || c.maxRPM_T > 4000)
+    return true;
 
   // 4. Start RPM musi być mniejszy niż Max RPM
-  if (c.startRPM_W <= 0 || c.startRPM_W >= c.maxRPM_W) return true;
-  if (c.startRPM_T <= 0 || c.startRPM_T >= c.maxRPM_T) return true;
+  if (c.startRPM_W <= 0 || c.startRPM_W >= c.maxRPM_W)
+    return true;
+  if (c.startRPM_T <= 0 || c.startRPM_T >= c.maxRPM_T)
+    return true;
 
-  return false;  // Wszystko wygląda okej
+  return false; // Wszystko wygląda okej
 }
 
 int findPresetIndex(String name) {
@@ -75,8 +80,8 @@ int findPresetIndex(String name) {
     EEPROM.get(EEPROM_PRESET_START + (i * sizeof(WindingPreset)), p);
     if (String(p.name) == name)
       return i;
-    if (p.name[0] == 0)
-      break;  // End of list
+    if (p.name[0] == 0 || (uint8_t)p.name[0] == 255)
+      break; // End of list
   }
   return -1;
 }
@@ -87,10 +92,10 @@ int findFirstEmptyPresetSlot() {
     int addr = EEPROM_PRESET_START + (i * sizeof(WindingPreset));
     EEPROM.get(addr, p);
     // If first character is null, the slot is empty
-    if (p.name[0] == 0)
+    if (p.name[0] == 0 || (uint8_t)p.name[0] == 255)
       return i;
   }
-  return -1;  // EEPROM is full
+  return -1; // EEPROM is full
 }
 
 void exportCSV() {
@@ -120,7 +125,7 @@ void exportCSV() {
 }
 
 bool loadPresetByName(String name) {
-  name.replace("\"", "");  // Usuń ewentualne cudzysłowy
+  name.replace("\"", ""); // Usuń ewentualne cudzysłowy
   name.trim();
 
   int index = findPresetIndex(name);
@@ -175,7 +180,7 @@ void savePreset(String name) {
 }
 
 void deletePreset(String name) {
-  name.replace("\"", "");  // Usuń ewentualne cudzysłowy
+  name.replace("\"", ""); // Usuń ewentualne cudzysłowy
   name.trim();
 
   int index = findPresetIndex(name);
