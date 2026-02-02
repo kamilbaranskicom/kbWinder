@@ -15,4 +15,29 @@
 #define EN 12
 #define LIMIT_PIN 4
 
-enum MachineState { IDLE, RUNNING, PAUSED, HOMING, MOVING, ERROR };
+enum MachineState { IDLE,
+                    RUNNING,
+                    PAUSED,
+                    HOMING,
+                    MOVING,
+                    ERROR };
+
+// --- GLOBAL STATE ---
+
+bool isPauseRequested = false;
+
+float stepsPerMM;
+long absPos = 0;  // Traverse steps from 0
+bool isHomed = false;
+int homingPhase = 0;  // 0: searching switch, 1: backing off
+
+unsigned long lastStepMicros = 0;
+float traverseAccumulator = 0;
+long currentLayerSteps = 0;
+int layerDir = 1;
+
+// to było:
+long currentStepsW = 0;  // Winder progress in steps
+long stepsPerLayer = 0;
+
+const float backoffDistanceMM = 1;

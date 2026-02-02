@@ -1,3 +1,5 @@
+const char version[4] = "0.1\0";
+
 #include "eeprom.h"
 #include "kbPickupWinder.h"
 #include "serial.h"
@@ -5,26 +7,6 @@
 #include "variables.h"
 
 // SoftwareSerial nextionSerial(2, 3);
-
-// --- GLOBAL STATE ---
-
-bool isPauseRequested = false;
-
-float stepsPerMM;
-long absPos = 0; // Traverse steps from 0
-bool isHomed = false;
-int homingPhase = 0; // 0: searching switch, 1: backing off
-
-unsigned long lastStepMicros = 0;
-float traverseAccumulator = 0;
-long currentLayerSteps = 0;
-int layerDir = 1;
-
-// to było:
-long currentStepsW = 0; // Winder progress in steps
-long stepsPerLayer = 0;
-
-const float backoffDistanceMM = 1;
 
 // --- UTILS ---
 
@@ -194,12 +176,22 @@ void handleGotoCommand(String cmd) {
 void moveManual(String cmd) {
   char motor = cmd[0]; // 'W' lub 'T'
   String param = cmd.substring(2);
+  param.trim();
+  float val;
+  int rpm;
+
   int spaceIdx = param.indexOf(' ');
-  float val = (spaceIdx == -1) ? param.toFloat() : param.substring(0, spaceIdx).toFloat();
-  int rpm = (spaceIdx == -1) ? 60 : param.substring(spaceIdx + 1).toInt();
+
+  if (spaceIdx == -1) {
+    // Brak spacji - cała reszta to dystans
+    val = param.toFloat();
+    rpm = (motor == 'W') ? 100 : 60; // Domyślne RPM
+  } else {
+    val = param.substring(0, spaceIdx).toFloat();
+    rpm = param.substring(spaceIdx + 1).toInt();
+  }
 
   long steps = 0;
-  bool direction;
 
   if (motor == 'W') {
     steps = (long)(val * cfg.stepsPerRevW);
@@ -223,10 +215,12 @@ void setup() {
   digitalWrite(EN, HIGH);
 
   Serial.begin(57600);
-  Serial.println(F("\n\n--- kbPickupWinder OS V0.1 ---"));
+  Serial.print(F("\n\n--- kbPickupWinder OS V"));
+  Serial.print(version);
+  Serial.println(F("---"));
 
   // nextionSerial.begin(9600);
-  loadMachineConfig();
+  loadMachineConfiguration();
 
   Serial.println(F("At your service, Your Majesty!\n"));
   printHelp();
@@ -409,6 +403,8 @@ void startTask(Task *t) {
   lastStepMicros = micros();
   digitalWrite(EN, LOW); // Prąd na silniki
   t->isStarted = true;
+  Serial.println(F("Task started."));
+  printStatus();
 }
 
 void executeMotion(Task *t) {
