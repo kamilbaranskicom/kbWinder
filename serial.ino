@@ -52,6 +52,8 @@ void processCommand(String cmd) {
     printLongHelp();
   } else if (cmd.startsWith(F("SETHELP"))) {
     printSetHelp();
+  } else if (cmd.startsWith(F("FACTORY"))) {
+    loadFallbackConfiguration();
   }  // (... handle more commands...)
   else if (cmd.startsWith("T ") || cmd.startsWith("W ")) {
     moveManual(cmd);
@@ -62,7 +64,7 @@ void printHelp() {
   Serial.println(F("Movement: W, T, GOTO T, SEEK ZERO, HOME\n"
                    "Control: START, STOP, PAUSE, RESUME\n"
                    "Presets: SAVE, LOAD, DELETE, EXPORT, IMPORT\n"
-                   "Settings: SET ..., GET ...\n"
+                   "Settings: SET ..., GET ..., FACTORY\n"
                    "Info: STATUS, HELP, LONGHELP, SETHELP"));
 }
 
@@ -88,6 +90,7 @@ void printLongHelp() {
       "EXPORT: prints presets in CSV format\n"
       "IMPORT: imports presets in CSV format (ends with empty line)\n"
       "STATUS: prints status\n"
+      "FACTORY: loads default machine settings\n"
       "SET ... : sets parameter(s)\n"
       "GET ... : gets parameter(s)\n"
       "SETHELP: parameters list\n"
