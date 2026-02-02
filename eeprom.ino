@@ -29,17 +29,19 @@ void loadFallbackConfiguration() {
   Serial.println(F("Loading default configuration."));
   // fallback config
   cfg = {
-    2.0,    // float screwPitch;
+    1.0,    // float screwPitch;
     1600,   // int stepsPerRevW;
     1600,   // int stepsPerRevT;
-    600,    // int maxRPM_W;
-    400,    // int maxRPM_T;
+    120,    // int maxRPM_W;
+    150,    // int maxRPM_T;
     40,     // int startRPM_W;
     40,     // int startRPM_T;
     false,  // bool dirW;
     false,  // bool dirT;
     true,   // bool useLimitSwitch;
-    false   // bool homeBeforeStart;
+    false,  // bool homeBeforeStart;
+    true,   // bool useStartOffset;
+    2       // float backoffDistanceMM;
   };
   saveMachineConfiguration();
 }

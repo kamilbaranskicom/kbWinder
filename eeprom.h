@@ -15,6 +15,8 @@ struct MachineConfig {
   bool dirT;
   bool useLimitSwitch;
   bool homeBeforeStart;
+  bool useStartOffset;
+  float backoffDistanceMM;
 };
 
 MachineConfig cfg;
