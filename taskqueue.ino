@@ -24,39 +24,40 @@ bool enqueueTask(MachineState s, char m, long target, bool isRelative, int rpm,
 
   debugEnqueueTask(s, m, target, isRelative, rpm, ramp);
 
-  if (taskCount < QUEUE_SIZE) {
-    Task &t = taskQueue[tail];
-    t.state = s;
-    t.motor = m;
-    if (isRelative) {
-      t.dir = (target > 0) ? 1 : -1;
-      t.targetSteps = abs(target);
-    } else {
-      t.targetPosition = target;
-      t.dir = 0;
-      // just for initialization; we will calculate the direction when starting
-      // the task as we shouldn't assume where the absPos will be
-    }
-    t.currentSteps = 0;
-    t.accelDistance = 0;
-    t.startRPM =
-      (t.motor == 'W')
-        ? cfg.startRPM_W
-        : cfg.startRPM_T;  // or should we ask active preset for this, as
-                           // wire diameter may affect startRPM?
-    t.targetRPM = (float)rpm;
-    t.currentRPM = t.startRPM;
-    t.accelRate = ramp;
-    t.isStarted = false;
-    t.isDecelerating = false;
-    t.isComplete = false;
-
-    tail = (tail + 1) % QUEUE_SIZE;
-    taskCount++;
-    return true;
+  if (taskCount >= QUEUE_SIZE) {
+    Serial.println(F("ERROR: Task Queue Full!"));
+    return false;
   }
-  Serial.println(F("ERROR: Task Queue Full!"));
-  return false;
+
+  Task &t = taskQueue[tail];
+  t.state = s;
+  t.motor = m;
+  t.isRelative = isRelative;
+  if (isRelative) {
+    t.dir = (target >= 0) ? 1 : -1;
+    t.targetSteps = abs(target);
+    t.targetPosition = NAN; // will be set when starting the task
+  } else {
+    t.targetPosition = target;
+    t.targetSteps = NAN; // will be set when starting the task
+    t.dir = 0;           // will be set when starting the task
+  }
+  t.currentSteps = 0;
+  t.accelDistance = 0;
+  t.startRPM = (t.motor == 'W')
+                   ? cfg.startRPM_W
+                   : cfg.startRPM_T; // or should we ask active preset for this,
+                                     // as wire diameter may affect startRPM?
+  t.targetRPM = (float)rpm;
+  t.currentRPM = t.startRPM;
+  t.accelRate = ramp;
+  t.isStarted = false;
+  t.isDecelerating = false;
+  t.isComplete = false;
+
+  tail = (tail + 1) % QUEUE_SIZE;
+  taskCount++;
+  return true;
 }
 
 Task *getCurrentTask() {
@@ -67,18 +68,18 @@ Task *getCurrentTask() {
 
 String getTaskStateStr(MachineState state) {
   switch (state) {
-    case HOMING:
-      return F("HOMING");
-    case MOVING:
-      return F("MOVING");
-    case RUNNING:
-      return F("WINDING");
-    case IDLE:
-      return F("IDLE");
-    case PAUSED:
-      return F("PAUSE");
-    case ERROR:
-      return F("ERROR");
+  case HOMING:
+    return F("HOMING");
+  case MOVING:
+    return F("MOVING");
+  case RUNNING:
+    return F("WINDING");
+  case IDLE:
+    return F("IDLE");
+  case PAUSED:
+    return F("PAUSE");
+  case ERROR:
+    return F("ERROR");
   }
   return "";
 }

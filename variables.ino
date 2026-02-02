@@ -64,16 +64,32 @@ void handleGet(String line) {
   line.remove(0, 4);  // Usuwa "GET "
   line.trim();
 
-  if (line.length() == 0) {
+  // Identify if the request is for a specific category
+  // -1: Not a category filter (searching for label or printing ALL)
+  int filterCategory = -1;
+  if (line == F("MACHINE")) filterCategory = C_MACHINE;
+  else if (line == F("PRESET")) filterCategory = C_PRESET;
+  else if (line == F("RUNTIME")) filterCategory = C_RUNTIME;
+
+  bool showAll = (line.length() == 0);
+
+  if (showAll) {
     Serial.println(F("ALL SETTINGS:"));
+  } else if (filterCategory != -1) {
+    Serial.print(line);
+    Serial.println(F(" SETTINGS:"));
   }
 
   bool found = false;
   for (int i = 0; i < varCount; i++) {
     String label = String(varTable[i].label);
 
-    // Jeśli linia jest pusta, wypisz WSZYSTKIE. Jeśli etykieta pasuje, wypisz JEDNĄ.
-    if (line.length() == 0 || line == label) {
+    // Filtering logic:
+    // Show if: 1. It's 'GET' (all), 2. Category matches, 3. Label matches
+    bool categoryMatch = (filterCategory != -1 && varTable[i].category == filterCategory);
+    bool labelMatch = (line == label);
+
+    if (showAll || categoryMatch || labelMatch) {
       found = true;
 
       // Wypisywanie kategorii parametru
@@ -117,7 +133,7 @@ void handleGet(String line) {
   }
 
   if (!found) {
-    Serial.println(F("ERROR: Parameter not found"));
+    Serial.println(F("ERROR: Parameter or category not found"));
   }
 }
 

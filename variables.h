@@ -33,6 +33,8 @@ VarMap varTable[] = { { "SCREW PITCH", &cfg.screwPitch, T_FLOAT, C_MACHINE, 0 },
                       { "TRAVERSE DIRECTION", &cfg.dirT, T_BOOL, C_MACHINE, 0 },
                       { "LIMIT SWITCH", &cfg.useLimitSwitch, T_BOOL, C_MACHINE, 0 },
                       { "HOME BEFORE START", &cfg.homeBeforeStart, T_BOOL, C_MACHINE, 0 },
+                      { "USE START OFFSET", &cfg.useStartOffset, T_BOOL, C_MACHINE, 0 },
+                      { "BACKOFF DISTANCE", &cfg.backoffDistanceMM, T_FLOAT, C_MACHINE, 0 },
 
                       { "NAME", active.name, T_CHAR, C_PRESET, 15 },
                       { "WIRE", &active.wireDia, T_FLOAT, C_PRESET, 0 },

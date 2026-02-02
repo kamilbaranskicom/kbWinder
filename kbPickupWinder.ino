@@ -11,11 +11,11 @@ const char version[4] = "0.1\0";
 // --- UTILS ---
 
 void updateDerivedValues() {
-  // Basic math: 1600 steps / 2.0 mm = 800 steps/mm
+  // Basic math: 1600 steps / 1.0 mm = 1600 steps/mm
   if (cfg.screwPitch > 0) {
     stepsPerMM = (float)cfg.stepsPerRevT / cfg.screwPitch;
   } else {
-    stepsPerMM = 800.0; // Safety default
+    stepsPerMM = 1600.0; // Safety default
   }
 }
 
@@ -106,10 +106,10 @@ void initiateWinding() {
   }
 
   // KROK 2: Dojazd do offsetu
-  // enqueueMoveT(active.startOffset, cfg.maxRPM_T);
-  // TODO:
   // taskState, motor, targetPosition, isRelative=false, rpm, ramp
-  enqueueTask(MOVING, 'T', active.startOffset, false, cfg.maxRPM_T, 0.1);
+  if (cfg.useStartOffset) {
+    enqueueTask(MOVING, 'T', active.startOffset, false, cfg.maxRPM_T, 0.1);
+  }
 
   // KROK 3: Nawijanie (na końcu kolejki)
   float rampValue = (float)active.rampRPM / 1000.0; // Scale ramp for engine
@@ -185,7 +185,7 @@ void moveManual(String cmd) {
   if (spaceIdx == -1) {
     // Brak spacji - cała reszta to dystans
     val = param.toFloat();
-    rpm = (motor == 'W') ? 100 : 60; // Domyślne RPM
+    rpm = (motor == 'W') ? cfg.maxRPM_W : cfg.maxRPM_T; // Domyślne RPM
   } else {
     val = param.substring(0, spaceIdx).toFloat();
     rpm = param.substring(spaceIdx + 1).toInt();
@@ -238,26 +238,36 @@ void loop() {
 
 void initiateHoming() {
   int speed = cfg.useLimitSwitch ? cfg.maxRPM_T : cfg.startRPM_T;
+  initiateHoming(speed);
+}
+
+void initiateHoming(int speed) {
+  if (!cfg.useLimitSwitch) {
+    Serial.println(F("ERROR: Cannot seek zero. Limit switches disabled."));
+    return;
+  }
 
   homingPhase = 0;
   isHomed = false;
 
-  digitalWrite(EN, LOW);
-  // Ustawienie kierunku w stronę krańcówki
-  digitalWrite(T_DIR, cfg.dirT ? LOW : HIGH);
+  // digitalWrite(EN, LOW);
+  //  Ustawienie kierunku w stronę krańcówki
+  // digitalWrite(T_DIR, cfg.dirT ? LOW : HIGH);
+
+  // 160 mm
+  long maxTravel = 160L * stepsPerMM;
 
   // taskState, motor, targetSteps=1M steps (as a safety limit),
   // isRelative=true, rpm, ramp
-  enqueueTask(HOMING, 'T', 1000000L, true, speed, 0.05);
+  enqueueTask(HOMING, 'T', -maxTravel, true, speed, 0.05);
 
   Serial.print(F("MSG: Homing added to queue at "));
   Serial.print(speed);
   Serial.println(F(" RPM..."));
 }
 
-void startSeekingZero(String cmd) {
-  // obsolete
-  /*String speedPart = cmd.substring(9);
+void parseSeekZeroCommand(String cmd) {
+  String speedPart = cmd.substring(9);
   speedPart.trim();
 
   int rpm;
@@ -268,7 +278,9 @@ void startSeekingZero(String cmd) {
     rpm = cfg.useLimitSwitch ? cfg.maxRPM_T
                              : 60; // 60 RPM is safe for manual STOP
   }
+  initiateHoming(rpm);
 
+  /*
   // Initializing Homing State
   currentRPM = rpm;
   homingDelay = 30000000L / ((long)currentRPM * cfg.stepsPerRevT);
@@ -446,6 +458,11 @@ void executeMotion(Task *t) {
     handleHomingLogic(t);
     handleTaskEnd(t);
   }
+  if (t->state == ERROR) {
+    Serial.println(F("ERROR encountered. Stopping motors, clearing queue."));
+    digitalWrite(EN, HIGH);
+    clearQueue();
+  }
 }
 
 void stepActiveMotor(Task *t) {
@@ -478,7 +495,12 @@ void stepActiveMotor(Task *t) {
     if (currentLayerSteps >= stepsInLayer) {
       layerDir *= -1;
       currentLayerSteps = 0;
-      Serial.println(F("MSG: Layer Flip"));
+      float currentTurns = (float)t->currentSteps / cfg.stepsPerRevW;
+      Serial.print(F("MSG: Layer Flip ("));
+      Serial.print(currentTurns, 1);
+      Serial.print(F(" turns / "));
+      Serial.print(active.totalTurns);
+      Serial.println(F(")"));
     }
     digitalWrite(W_STEP, LOW);
   } else {
@@ -547,24 +569,61 @@ void updateTaskRamp(Task *t) {
 }
 
 void handleHomingLogic(Task *t) {
-  if (t->state == HOMING && homingPhase == 0) {
-    if (cfg.useLimitSwitch && digitalRead(LIMIT_PIN) == LOW) {
-      // Phase 0: Just hit the switch
-      absPos = 0;
-      isHomed = true;
-      homingPhase = 1;
+  if (t->state != HOMING)
+    return;
 
-      t->targetSteps = (long)(backoffDistanceMM * stepsPerMM); // 1mm backoff
-      t->currentSteps = 0;
-      t->accelDistance = 0;
-      t->isDecelerating = false;
+  // ZABEZPIECZENIE 1: Jeśli krańcówki są wyłączone w menu, przerwij bazowanie
+  if (!cfg.useLimitSwitch) {
+    Serial.println(
+        F("ERROR: Homing failed. Limit switches are disabled in CFG."));
+    t->state = ERROR;
+    t->isComplete = true;
+    return;
+  }
 
-      digitalWrite(T_DIR, cfg.dirT ? HIGH : LOW); // Away from switch
-
-      Serial.print(F("MSG: Switch hit. Backing off "));
-      Serial.print(backoffDistanceMM);
-      Serial.println(F(" mm"));
+  // --- FAZA 0 lub 2: Szukamy fizycznego kliknięcia ---
+  if (homingPhase == 0 || homingPhase == 2) {
+    if (digitalRead(LIMIT_PIN) == LOW) {
+      if (homingPhase == 0) {
+        homingPhase = 1;
+        t->currentSteps = 0;
+        t->targetSteps = (long)(backoffDistanceMM * stepsPerMM);
+        t->dir = -t->dir;
+        digitalWrite(T_DIR, (t->dir == 1) ? cfg.dirT : !cfg.dirT);
+        Serial.println(F("MSG: Switch hit. Phase 1 (Backoff)"));
+      } else {
+        absPos = 0;
+        isHomed = true;
+        homingPhase = 3;
+        t->currentSteps = t->targetSteps; // Koniec zadania
+        Serial.println(F("MSG: Precision Home reached. Zero set."));
+      }
     }
+  }
+
+  // --- FAZA 1: Koniec odjazdu -> start powolnego podejścia ---
+  if (homingPhase == 1 && t->currentSteps >= t->targetSteps) {
+    homingPhase = 2;
+    t->currentSteps = 0;
+
+    // ZABEZPIECZENIE 2: Zamiast 999999, dajemy np. 2x backoffDistance.
+    // Jeśli w tym dystansie nie trafi w switch, znaczy że coś jest nie tak.
+    t->targetSteps = (long)(backoffDistanceMM * 2.0 * stepsPerMM);
+
+    t->targetRPM = 20.0;
+    t->currentRPM = 20.0;
+    t->dir = -t->dir;
+    digitalWrite(T_DIR, (t->dir == 1) ? cfg.dirT : !cfg.dirT);
+    Serial.println(F("MSG: Phase 2 (Slow Touch)"));
+  }
+
+  // ZABEZPIECZENIE 3: Timeout (jeśli Phase 0 lub 2 przejechały za dużo)
+  if (t->currentSteps >= t->targetSteps &&
+      (homingPhase == 0 || homingPhase == 2)) {
+    Serial.println(F("ERROR: Homing timeout! Switch not found."));
+    t->state = ERROR;
+    t->isComplete = true;
+    homingPhase = -1; // Stan błędu
   }
 }
 
@@ -582,7 +641,11 @@ void emergencyStop(bool userAsked) {
 }
 
 void handleTaskEnd(Task *t) {
-  if (t->currentSteps >= t->targetSteps || t->targetSteps <= 0) {
+  bool isHomingFinished = (t->state == HOMING && homingPhase >= 3);
+  bool isNormalTaskFinished =
+      (t->state != HOMING && t->currentSteps >= t->targetSteps);
+
+  if (isHomingFinished || isNormalTaskFinished) {
     t->isComplete = true;
     dequeueTask();
 
@@ -594,5 +657,6 @@ void handleTaskEnd(Task *t) {
     } else {
       Serial.println(F("MSG: Task complete."));
     }
+    printStatus();
   }
 }
