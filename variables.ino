@@ -14,6 +14,11 @@ void handleSet(String line) {
       if (valStr.length() == 0)
         return;
 
+      if (varTable[i].category == C_RUNTIME) {
+        Serial.println(F("ERROR: Runtime values are read-only."));
+        return;
+      }
+
       // Update RAM
       switch (varTable[i].type) {
         case T_FLOAT:
@@ -74,8 +79,10 @@ void handleGet(String line) {
       // Wypisywanie kategorii parametru
       if (varTable[i].category == C_MACHINE) {
         Serial.print(F("[MACHINE] "));
-      } else {
+      } else if (varTable[i].category == C_PRESET) {
         Serial.print(F("[PRESET]  "));
+      } else {
+        Serial.print(F("[RUNTIME] "));
       }
 
       Serial.print(label);
