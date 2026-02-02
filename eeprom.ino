@@ -2,26 +2,10 @@
 
 // --- EEPROM HELPERS ---
 
-void loadMachineConfig() {
+void loadMachineConfiguration() {
   EEPROM.get(EEPROM_CONF_ADDR, cfg);
-  if (cfg.stepsPerRevW == -1 || cfg.stepsPerRevW == 0) {  // First run defaults
-    Serial.println(F("Loading default configuration."));
-    // fallback config
-    cfg = {
-      2.0,    // float screwPitch;
-      1600,   // int stepsPerRevW;
-      1600,   // int stepsPerRevT;
-      600,    // int maxRPM_W;
-      400,    // int maxRPM_T;
-      40,     // int startRPM_W;
-      40,     // int startRPM_T;
-      false,  // bool dirW;
-      false,  // bool dirT;
-      true,   // bool useLimitSwitch;
-      false   // bool homeBeforeStart;
-    };
-
-    EEPROM.put(EEPROM_CONF_ADDR, cfg);
+  if (areAnySettingNonsense(cfg)) {  // First run defaults
+    loadFallbackConfiguration();
   }
 
   if (!loadPresetByName("INIT")) {
@@ -31,7 +15,7 @@ void loadMachineConfig() {
       "INIT",  // char name[16];
       0.1,     // float wireDia;
       10.0,    // float coilWidth;
-      100,     // long totalTurns;
+      1000,     // long totalTurns;
       500,     // int targetRPM;
       10,      // int rampRPM;
       8000     // long startOffset;
@@ -39,6 +23,48 @@ void loadMachineConfig() {
   }
 
   updateDerivedValues();
+}
+
+void loadFallbackConfiguration() {
+  Serial.println(F("Loading default configuration."));
+  // fallback config
+  cfg = {
+    2.0,    // float screwPitch;
+    1600,   // int stepsPerRevW;
+    1600,   // int stepsPerRevT;
+    600,    // int maxRPM_W;
+    400,    // int maxRPM_T;
+    40,     // int startRPM_W;
+    40,     // int startRPM_T;
+    false,  // bool dirW;
+    false,  // bool dirT;
+    true,   // bool useLimitSwitch;
+    false   // bool homeBeforeStart;
+  };
+  saveMachineConfiguration();
+}
+
+void saveMachineConfiguration() {
+  EEPROM.put(EEPROM_CONF_ADDR, cfg);
+}
+
+bool areAnySettingNonsense(const MachineConfig &c) {
+  // 1. Screw pitch nie może być zerem ani ujemny (standard to 1.0 - 5.0)
+  if (c.screwPitch <= 0.01 || c.screwPitch > 50.0) return true;
+
+  // 2. Kroki na obrót (zazwyczaj 200, 400, 800, 1600, 3200)
+  if (c.stepsPerRevW < 200 || c.stepsPerRevW > 10000) return true;
+  if (c.stepsPerRevT < 200 || c.stepsPerRevT > 10000) return true;
+
+  // 3. RPM-y: jeśli są ujemne lub absurdalnie wysokie (np. błąd odczytu float)
+  if (c.maxRPM_W <= 5 || c.maxRPM_W > 4000) return true;
+  if (c.maxRPM_T <= 5 || c.maxRPM_T > 4000) return true;
+
+  // 4. Start RPM musi być mniejszy niż Max RPM
+  if (c.startRPM_W <= 0 || c.startRPM_W >= c.maxRPM_W) return true;
+  if (c.startRPM_T <= 0 || c.startRPM_T >= c.maxRPM_T) return true;
+
+  return false;  // Wszystko wygląda okej
 }
 
 int findPresetIndex(String name) {
