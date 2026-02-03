@@ -3,8 +3,8 @@ import threading
 import re
 
 # Konfiguracja portów
-ser_nano = serial.Serial('COM4', 115200, timeout=0.1)
-ser_esp = serial.Serial('COM3', 115200, timeout=0.1)
+ser_nano = serial.Serial('COM4', 57600, timeout=0.1)
+ser_esp = serial.Serial('COM3', 57600, timeout=0.1)
 
 # Regex do usuwania kolorów ANSI (standardowy wzorzec)
 ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
