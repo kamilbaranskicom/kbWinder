@@ -3,8 +3,8 @@
 
 struct Task {
   MachineState state;
-  MachineState prevState; // needed for pausing/resuming
-  char motor;  // 'W', 'T' lub 'S' (Synchronized)
+  MachineState prevState;  // needed for pausing/resuming
+  char motor;              // 'W', 'T' lub 'S' (Synchronized)
   bool isRelative;
   long targetPosition;  // absolute
   long targetSteps;     // relative
@@ -18,6 +18,9 @@ struct Task {
   bool isStarted;
   bool isDecelerating;
   bool isComplete;
+  bool isJogMove;
+  unsigned long taskStarted;
+  unsigned long taskLastPinged;
 };
 
 #define QUEUE_SIZE 6

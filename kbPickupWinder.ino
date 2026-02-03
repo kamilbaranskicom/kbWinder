@@ -108,14 +108,15 @@ void initiateWinding() {
   // KROK 2: Dojazd do offsetu
   // taskState, motor, targetPosition, isRelative=false, rpm, ramp
   if (cfg.useStartOffset) {
-    enqueueTask(MOVING, 'T', active.startOffset, false, cfg.maxRPM_T, 0.1);
+    enqueueTask(MOVING, 'T', active.startOffset, false, cfg.maxRPM_T, 0.1,
+                false);
   }
 
   // KROK 3: Nawijanie (na końcu kolejki)
   float rampValue = (float)active.rampRPM / 1000.0; // Scale ramp for engine
   // taskState, motor, targetSteps, isRelative=true, rpm, ramp
   enqueueTask(RUNNING, 'S', active.totalTurns * cfg.stepsPerRevW, true,
-              getMaxRPMForCurrentPreset(), rampValue);
+              getMaxRPMForCurrentPreset(), rampValue, false);
 
   Serial.println(F("MSG: Winding sequence enqueued."));
 
@@ -187,16 +188,26 @@ void handleGotoCommand(String cmd) {
   int rpm =
       (spaceIdx == -1) ? cfg.maxRPM_T : param.substring(spaceIdx + 1).toInt();
 
-  if (posStr == F("HOME")) {
-    // GOTO HOME zawsze jedzie do punktu startowego aktualnego presetu
-    enqueueTask(MOVING, 'T', active.startOffset, false, rpm, 0.1);
+  if (posStr == F("START")) {
+    // GOTO START goes to active preset start offset
+    enqueueTask(MOVING, 'T', active.startOffset, false, rpm, 0.1, false);
+  } else if (posStr == F("ZERO")) {
+    // GOTO ZERO goes to zero
+    enqueueTask(MOVING, 'T', 0, false, rpm, 0.1, false);
+  } else if (posStr == F("BACKOFF")) {
+    // GOTO BACKOFF goes to backoff distance!
+    enqueueTask(MOVING, 'T', cfg.backoffDistanceMM * stepsPerMM, false, rpm,
+                0.1, false);
   } else {
+    // GOTO <absPos>
     long targetPosInSteps = (long)(posStr.toFloat() * stepsPerMM);
-    enqueueTask(MOVING, 'T', targetPosInSteps, false, rpm, 0.1);
+    enqueueTask(MOVING, 'T', targetPosInSteps, false, rpm, 0.1, false);
   }
 }
 
-void moveManual(String cmd) {
+void moveManual(String cmd) { moveManual(cmd, false); }
+
+void moveManual(String cmd, bool isJogMove) {
   char motor = cmd[0]; // 'W' lub 'T'
   String param = cmd.substring(2);
   param.trim();
@@ -223,7 +234,7 @@ void moveManual(String cmd) {
   }
 
   // true = ruch relatywny, targetSteps to abs(steps), dir ustawiony
-  enqueueTask(MOVING, motor, steps, true, rpm, 0.1);
+  enqueueTask(MOVING, motor, steps, true, rpm, 0.1, isJogMove);
 }
 
 // --- CORE FUNCTIONS: SETUP & LOOP ---
@@ -282,7 +293,7 @@ void initiateHoming(int speed) {
 
   // taskState, motor, targetSteps=1M steps (as a safety limit),
   // isRelative=true, rpm, ramp
-  enqueueTask(HOMING, 'T', -maxTravel, true, speed, 0.05);
+  enqueueTask(HOMING, 'T', -maxTravel, true, speed, 0.05, false);
 
   Serial.print(F("MSG: Homing added to queue at "));
   Serial.print(speed);
@@ -311,6 +322,9 @@ void startTask(Task *t) {
   if (t->isStarted)
     return;
 
+  traverseAccumulator = 0.0;
+  currentLayerSteps = 0;
+
   if (t->isRelative) {
     t->targetPosition =
         absPos + (t->dir == 1 ? t->targetSteps : -t->targetSteps);
@@ -322,6 +336,8 @@ void startTask(Task *t) {
   }
   t->currentRPM = t->startRPM;
   lastStepMicros = micros();
+  t->taskStarted = millis();
+  t->taskLastPinged = t->taskStarted;
   digitalWrite(EN, LOW); // Prąd na silniki
   t->isStarted = true;
   Serial.println(F("Task started."));
@@ -350,22 +366,28 @@ void executeMotion(Task *t) {
     return;
   }
 
-  unsigned long now = micros();
+  if (t->isJogMove && (millis() - t->taskLastPinged > 2000)) {
+    t->state = ERROR;
+    Serial.println(F("ALARM: Jog timeout! Connection lost?"));
+  } else {
 
-  // Select Master Motor for timing calculation
-  int spr = (t->state == RUNNING || t->motor == 'W') ? cfg.stepsPerRevW
-                                                     : cfg.stepsPerRevT;
-  unsigned long currentDelay = 60000000L / ((unsigned long)t->currentRPM * spr);
+    unsigned long now = micros();
+    // Select Master Motor for timing calculation
+    int spr = (t->state == RUNNING || t->motor == 'W') ? cfg.stepsPerRevW
+                                                       : cfg.stepsPerRevT;
+    unsigned long currentDelay =
+        60000000L / ((unsigned long)t->currentRPM * spr);
 
-  if (now - lastStepMicros >= currentDelay) {
-    lastStepMicros = now;
+    if (now - lastStepMicros >= currentDelay) {
+      lastStepMicros = now;
 
-    stepActiveMotor(t);
-    updateTaskRamp(t);
-    t->currentSteps++;
+      stepActiveMotor(t);
+      updateTaskRamp(t);
+      t->currentSteps++;
 
-    handleHomingLogic(t);
-    handleTaskEnd(t);
+      handleHomingLogic(t);
+      handleTaskEnd(t);
+    }
   }
   if (t->state == ERROR) {
     Serial.println(F("ERROR encountered. Stopping motors, clearing queue."));
@@ -400,7 +422,8 @@ void stepActiveMotor(Task *t) {
 
     // Layer Flip Logic
     long stepsInLayer =
-        (long)((active.coilWidth / active.wireDia) * cfg.stepsPerRevW);
+        (long)(active.coilWidth * ((float)cfg.stepsPerRevT / cfg.screwPitch));
+
     if (currentLayerSteps >= stepsInLayer) {
       layerDir *= -1;
       currentLayerSteps = 0;
@@ -547,6 +570,7 @@ void emergencyStop(bool userAsked) {
     Serial.println(
         F("ALARM: EMERGENCY STOP! Limit switch hit. Queue cleared."));
   }
+  printStatus();
 }
 
 void handleTaskEnd(Task *t) {

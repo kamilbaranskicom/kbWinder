@@ -51,6 +51,10 @@ void processCommand(String cmd) {
     printSetHelp();
   } else if (cmd.startsWith(F("FACTORY"))) {
     loadFallbackConfiguration();
+  } else if (cmd.startsWith(F("JOG PING"))) {
+    getCurrentTask()->taskLastPinged = millis();
+  } else if (cmd.startsWith(F("JOG "))) {
+    moveManual(cmd.substring(4), true);
   } // (... handle more commands...)
   else if (cmd.startsWith("T ") || cmd.startsWith("W ")) {
     moveManual(cmd);
@@ -59,7 +63,7 @@ void processCommand(String cmd) {
 
 void printHelp() {
   Serial.println(
-      F("Movement: W, T, GOTO T, SEEK ZERO, HOME\n"
+      F("Movement: W, T, GOTO, SEEK ZERO\n"
         "Control: START, STOP, PAUSE, RESUME\n"
         "Presets: SAVE, LOAD, DELETE, EXPORT, IMPORT\n"
         "Settings: GET MACHINE/PRESET/RUNTIME/..., SET ..., FACTORY\n"
@@ -79,8 +83,12 @@ void printLongHelp() {
         "  until the limit switch is found or STOP command is sent)\n"
         "W <distance> [speed]: move Winder to relative position (in turns)\n"
         "T <distance> [speed]: move Traverse to relative position (in mm)\n"
+        "JOG W/T <distance> [speed]: move to relative position, but stops\n"
+        "  if no JOG PING received within 2 secs\n"
+        "JOG PING: ping for JOG W/T\n"
         "GOTO <position> [speed]: move Traverse to absolute position\n"
-        "GOTO HOME [speed]: goes to HOME position\n"
+        "GOTO (ZERO|START|BACKOFF) [speed]: move Traverse to (zero|\n"
+        "  preset start|backoff distance) position\n"
         "SAVE <name> [<wire-diameter> <coil-length> <turns>]: saves preset "
         "<name>\n"
         "LOAD <name>: loads preset <name>\n"

@@ -3,7 +3,7 @@
 // --- QUEUE HELPERS ---
 
 void debugEnqueueTask(MachineState s, char m, long target, bool isRelative,
-                      int rpm, float ramp) {
+                      int rpm, float ramp, bool isJogMove) {
   Serial.print("Enqueue task: (");
   Serial.print(s);
   Serial.print(", ");
@@ -16,13 +16,15 @@ void debugEnqueueTask(MachineState s, char m, long target, bool isRelative,
   Serial.print(rpm);
   Serial.print(", ");
   Serial.print(ramp);
+  Serial.print(", ");
+  Serial.print(isJogMove);
   Serial.println(")");
 }
 
 bool enqueueTask(MachineState s, char m, long target, bool isRelative, int rpm,
-                 float ramp) {
+                 float ramp, bool isJogMove) {
 
-  debugEnqueueTask(s, m, target, isRelative, rpm, ramp);
+  debugEnqueueTask(s, m, target, isRelative, rpm, ramp, isJogMove);
 
   if (taskCount >= QUEUE_SIZE) {
     Serial.println(F("ERROR: Task Queue Full!"));
@@ -66,6 +68,11 @@ bool enqueueTask(MachineState s, char m, long target, bool isRelative, int rpm,
   t.isStarted = false;
   t.isDecelerating = false;
   t.isComplete = false;
+
+  t.isJogMove = isJogMove;
+  // t.taskRequested = millis();
+  t.taskStarted = 0;
+  t.taskLastPinged = 0;
 
   tail = (tail + 1) % QUEUE_SIZE;
   taskCount++;
