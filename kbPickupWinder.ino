@@ -463,7 +463,7 @@ void stepActiveMotor(Task *t) {
 
       // Limit switch safety (except during homing phase 0)
       if (cfg.useLimitSwitch && digitalRead(LIMIT_PIN) == LOW &&
-          t->state != HOMING) {
+          t->state != HOMING && digitalRead(T_DIR) == !cfg.dirT) {
         emergencyStop(false);
         return;
       }
