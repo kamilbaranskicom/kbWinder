@@ -79,7 +79,7 @@ void serialPrintLog(LogLevel level, String message, bool newLine = true) {
   if (level == LOG_LEVEL_SENDCMD) {
     DEBUG_UART.println(message);
   }
-  // return;
+  return;
 
   //  following just for debug when using UART bridge on the PC side
 
