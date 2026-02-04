@@ -539,8 +539,9 @@ void handleStaticFile(AsyncWebServerRequest *request, String overridePath) {
       request->send(response);
     } else {
       AsyncWebServerResponse *response = request->beginResponse(LittleFS, finalPath);
-      if (overridePath == PATH_404_HTML)
+      if (overridePath == FPSTR(PATH_404_HTML)) {
         response->setCode(404);
+      }
       request->send(response);
     }
   } else {
