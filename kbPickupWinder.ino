@@ -240,18 +240,8 @@ void moveManual(String cmd, bool isJogMove) {
 // --- CORE FUNCTIONS: SETUP & LOOP ---
 
 void setup() {
-  pinMode(EN, OUTPUT);
-  pinMode(W_STEP, OUTPUT);
-  pinMode(W_DIR, OUTPUT);
-  pinMode(T_STEP, OUTPUT);
-  pinMode(T_DIR, OUTPUT);
-  pinMode(LIMIT_PIN, INPUT_PULLUP);
-  digitalWrite(EN, HIGH);
-
-  Serial.begin(57600);
-  Serial.print(F("\n\n--- kbPickupWinder OS V"));
-  Serial.print(version);
-  Serial.println(F("---"));
+  initHardware();
+  initSerial(57600);
 
   // nextionSerial.begin(9600);
   loadMachineConfiguration();
@@ -259,6 +249,16 @@ void setup() {
   Serial.println(F("At your service, Your Majesty!\n"));
   printHelp();
   Serial.println();
+}
+
+void initHardware() {
+  pinMode(EN, OUTPUT);
+  pinMode(W_STEP, OUTPUT);
+  pinMode(W_DIR, OUTPUT);
+  pinMode(T_STEP, OUTPUT);
+  pinMode(T_DIR, OUTPUT);
+  pinMode(LIMIT_PIN, INPUT_PULLUP);
+  digitalWrite(EN, HIGH);
 }
 
 void loop() {
@@ -379,7 +379,7 @@ void executeMotion(Task *t) {
         60000000L / ((unsigned long)t->currentRPM * spr);
 
     if (now - lastStepMicros >= currentDelay) {
-      lastStepMicros = now;
+      lastStepMicros += currentDelay;
 
       stepActiveMotor(t);
       updateTaskRamp(t);
