@@ -11,6 +11,8 @@ struct MachineConfig {
   int maxRPM_T;
   int startRPM_T;
   int startRPM_W;
+  int defaultRamp_T;
+  int defaultRamp_W;
   bool dirW;
   bool dirT;
   bool useLimitSwitch;
@@ -34,7 +36,7 @@ struct WindingPreset {
   long totalTurns;
   int targetRPM;
   int rampRPM;
-  long startOffset;
+  float startOffset;
 };
 
 WindingPreset active; // Currently loaded/edited parameters

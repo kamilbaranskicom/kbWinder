@@ -16,9 +16,9 @@ void loadMachineConfiguration() {
         0.1,    // float wireDia;
         10.0,   // float coilWidth;
         1000,   // long totalTurns;
-        500,    // int targetRPM;
-        10,     // int rampRPM;
-        8000    // long startOffset;
+        120,    // int targetRPM;
+        30,     // int rampRPM;
+        10      // float startOffset;
     };
   }
 
@@ -36,6 +36,8 @@ void loadFallbackConfiguration() {
       150,   // int maxRPM_T;
       40,    // int startRPM_W;
       40,    // int startRPM_T;
+      30,    // int defaultRamp_T;
+      30,    // int defaultRamp_W;
       false, // bool dirW;
       false, // bool dirT;
       true,  // bool useLimitSwitch;
@@ -69,6 +71,11 @@ bool areAnySettingNonsense(const MachineConfig &c) {
   if (c.startRPM_W <= 0 || c.startRPM_W >= c.maxRPM_W)
     return true;
   if (c.startRPM_T <= 0 || c.startRPM_T >= c.maxRPM_T)
+    return true;
+
+  if (c.defaultRamp_W > 150)
+    return true;
+  if (c.defaultRamp_T > 150)
     return true;
 
   return false; // Wszystko wygląda okej
@@ -145,7 +152,7 @@ bool loadPresetByName(String name) {
 
   // Po załadowaniu warto wyświetlić parametry, żeby użytkownik widział co
   // wczytał
-  handleGet(F("GET"));
+  handleGet(F("PRESET"));
   return true;
 }
 
