@@ -11,11 +11,11 @@
 
 /** @name Software Identity Constants */
 ///@{
-const char S____NAME[] PROGMEM = "kbWinderWWW";                                  ///< Product name
-const char S_VERSION[] PROGMEM = "1.0";                                          ///< Software version
-const char S____DATE[] PROGMEM = "2026-02-03";                                   ///< Build date
-const char S__AUTHOR[] PROGMEM = "Kamil Baranski";                               ///< Author name
-const char S_AUTHURL[] PROGMEM = "https://kamilbaranski.com/";                   ///< Author website
+const char S____NAME[] PROGMEM = "kbWinderWWW";                            ///< Product name
+const char S_VERSION[] PROGMEM = "1.0";                                    ///< Software version
+const char S____DATE[] PROGMEM = "2026-02-03";                             ///< Build date
+const char S__AUTHOR[] PROGMEM = "Kamil Baranski";                         ///< Author name
+const char S_AUTHURL[] PROGMEM = "https://kamilbaranski.com/";             ///< Author website
 const char S_PRODURL[] PROGMEM = "https://kamilbaranski.com/kbWinderWWW/"; ///< Product website
 /** @brief OTA Update URL (HTTP only for compatibility) */
 const char S_UPDATEU[] PROGMEM = "http://kamilbaranski.com/kbWinderWWW/firmware/update.json?version=";
@@ -47,6 +47,7 @@ extern AsyncWebServer *server;
 
 /** @brief Flag indicating if the system has completed the boot process */
 bool isSystemReady = false;
+bool serialInitialized = false;
 
 /**
  * @brief Standard Arduino setup function.
@@ -152,4 +153,3 @@ void processSerialInput() {
     batchBuffer = "";
   }
 }
-

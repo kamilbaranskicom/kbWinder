@@ -23,6 +23,7 @@ void initializeSerial(bool firstTime) {
 
   // 115200, SERIAL_8N1, USB_TX, USB_RX itp.
   DEBUG_UART.begin(57600); // to tylko port do debugu, nie wiadomo, czy będziemy tu coś pisać.
+  serialInitialized = true;
 
   uint32_t startTime = millis();
   while (!DEBUG_UART && (millis() - startTime < 200)) { // 0.2s delay
@@ -72,11 +73,15 @@ void sayHello() {
 void debugSerialFlush() { DEBUG_UART.flush(); }
 
 void serialPrintLog(LogLevel level, String message, bool newLine = true) {
+  if (!serialInitialized)
+    return;
+
   if (level == LOG_LEVEL_SENDCMD) {
     DEBUG_UART.println(message);
   }
-  return;
-  // following just for debug when using UART bridge on the PC side
+  // return;
+
+  //  following just for debug when using UART bridge on the PC side
 
   // if (level == LOG_LEVEL_NANO)
   //   return; // nano nie odsyłamy z powrotem, bo nie zdążymy.
