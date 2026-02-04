@@ -3,7 +3,7 @@
 // --- QUEUE HELPERS ---
 
 void debugEnqueueTask(MachineState s, char m, long target, bool isRelative,
-                      int rpm, float ramp, bool isJogMove) {
+                      int rpm, int ramp, bool isJogMove) {
   Serial.print("Enqueue task: (");
   Serial.print(s);
   Serial.print(", ");
@@ -21,8 +21,54 @@ void debugEnqueueTask(MachineState s, char m, long target, bool isRelative,
   Serial.println(")");
 }
 
+bool printTaskDebug(Task *t) {
+  if (t == NULL) {
+    Serial.println(F("DEBUG: No active task to print."));
+    return;
+  }
+
+  Serial.println(F("--- TASK DUMP START ---"));
+  
+  // Stany (enumy rzutujemy na int)
+  Serial.print(F("STATE: ")); Serial.println((int)t->state);
+  Serial.print(F("PREV_STATE: ")); Serial.println((int)t->prevState);
+  
+  // Identyfikacja i tryb
+  Serial.print(F("MOTOR: ")); Serial.println(t->motor);
+  Serial.print(F("RELATIVE: ")); Serial.println(t->isRelative);
+  
+  // Pozycje i kroki
+  Serial.print(F("TARGET_POS: ")); Serial.println(t->targetPosition);
+  Serial.print(F("TARGET_STEPS: ")); Serial.println(t->targetSteps);
+  Serial.print(F("DIR: ")); Serial.println(t->dir);
+  Serial.print(F("CUR_STEPS: ")); Serial.println(t->currentSteps);
+  Serial.print(F("ACCEL_DIST: ")); Serial.println(t->accelDistance);
+  
+  // Prędkości i Rampa (floaty)
+  Serial.print(F("START_RPM: ")); Serial.println(t->startRPM);
+  Serial.print(F("TARGET_RPM: ")); Serial.println(t->targetRPM);
+  Serial.print(F("CUR_RPM: ")); Serial.println(t->currentRPM);
+  Serial.print(F("ACCEL_RATE: ")); Serial.println(t->accelRate);
+  
+  // Timingi i Cache
+  Serial.print(F("CACHED_DELAY: ")); Serial.println(t->cachedDelay);
+  Serial.print(F("LAST_RAMP_UP: ")); Serial.println(t->lastRampUpdate);
+  
+  // Flagi stanu
+  Serial.print(F("IS_STARTED: ")); Serial.println(t->isStarted);
+  Serial.print(F("IS_DECEL: ")); Serial.println(t->isDecelerating);
+  Serial.print(F("IS_COMPLETE: ")); Serial.println(t->isComplete);
+  Serial.print(F("IS_JOG: ")); Serial.println(t->isJogMove);
+  
+  // Watchdog i start
+  Serial.print(F("TASK_STARTED: ")); Serial.println(t->taskStarted);
+  Serial.print(F("LAST_PING: ")); Serial.println(t->taskLastPinged);
+  
+  Serial.println(F("--- TASK DUMP END ---"));
+}
+
 bool enqueueTask(MachineState s, char m, long target, bool isRelative, int rpm,
-                 float ramp, bool isJogMove) {
+                 int ramp, bool isJogMove) {
 
   debugEnqueueTask(s, m, target, isRelative, rpm, ramp, isJogMove);
 

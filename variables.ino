@@ -2,14 +2,13 @@
 
 // --- COMMAND HANDLERS ---
 
-void handleSet(String line) {
-  line.remove(0, 4);  // Remove "SET "
-  line.trim();
+void handleSet(String query) {
+  query.trim();
 
   for (int i = 0; i < varCount; i++) {
-    String label = String(varTable[i].label);
-    if (line.startsWith(label)) {
-      String valStr = line.substring(label.length());
+    size_t labelLen = strlen(varTable[i].label);
+    if (strncasecmp(query.c_str(), varTable[i].label, labelLen) == 0) {
+      String valStr = query.substring(labelLen);
       valStr.trim();
       if (valStr.length() == 0)
         return;
@@ -31,7 +30,7 @@ void handleSet(String line) {
           *(long *)varTable[i].ptr = valStr.toInt();
           break;
         case T_BOOL:
-          *(bool *)varTable[i].ptr = parseBool(valStr, label);
+          *(bool *)varTable[i].ptr = parseBool(valStr, String(varTable[i].label));
           break;
         case T_CHAR:
           {
@@ -50,9 +49,9 @@ void handleSet(String line) {
         Serial.println(F("SYSTEM: Preset parameter updated in RAM. "));
       }
 
-      Serial.print(label);
+      Serial.print(varTable[i].label);
       Serial.print(F(" = "));
-      handleGet("GET " + label);
+      handleGet(varTable[i].label);
       updateDerivedValues();
       return;
     }
@@ -60,34 +59,33 @@ void handleSet(String line) {
   Serial.println(F("ERROR: Unknown parameter"));
 }
 
-void handleGet(String line) {
-  line.remove(0, 4);  // Usuwa "GET "
-  line.trim();
+void handleGet(String query) {
+  query.trim();
+  if (query.startsWith(F("GET "))) query.remove(0, 4);
+  query.trim();
 
   // Identify if the request is for a specific category
   // -1: Not a category filter (searching for label or printing ALL)
   int filterCategory = -1;
-  if (line == F("MACHINE")) filterCategory = C_MACHINE;
-  else if (line == F("PRESET")) filterCategory = C_PRESET;
-  else if (line == F("RUNTIME")) filterCategory = C_RUNTIME;
+  if (query.equalsIgnoreCase(F("MACHINE"))) filterCategory = C_MACHINE;
+  else if (query.equalsIgnoreCase(F("PRESET"))) filterCategory = C_PRESET;
+  else if (query.equalsIgnoreCase(F("RUNTIME"))) filterCategory = C_RUNTIME;
 
-  bool showAll = (line.length() == 0);
+  bool showAll = (query.length() == 0);
 
   if (showAll) {
     Serial.println(F("ALL SETTINGS:"));
   } else if (filterCategory != -1) {
-    Serial.print(line);
+    Serial.print(query);
     Serial.println(F(" SETTINGS:"));
   }
 
   bool found = false;
   for (int i = 0; i < varCount; i++) {
-    String label = String(varTable[i].label);
-
     // Filtering logic:
     // Show if: 1. It's 'GET' (all), 2. Category matches, 3. Label matches
     bool categoryMatch = (filterCategory != -1 && varTable[i].category == filterCategory);
-    bool labelMatch = (line == label);
+    bool labelMatch = (strcasecmp(query.c_str(), varTable[i].label) == 0);
 
     if (showAll || categoryMatch || labelMatch) {
       found = true;
@@ -101,7 +99,7 @@ void handleGet(String line) {
         Serial.print(F("[RUNTIME] "));
       }
 
-      Serial.print(label);
+      Serial.print(varTable[i].label);
       Serial.print(F(": "));
 
       switch (varTable[i].type) {
@@ -121,7 +119,7 @@ void handleGet(String line) {
           {
             bool val = *(bool *)varTable[i].ptr;
             // Specjalna obsługa dla kierunków i przełączników
-            if (label.indexOf(F("DIRECTION")) >= 0) {
+            if (strstr(varTable[i].label, "DIRECTION") != NULL) {
               Serial.println(val ? F("FORWARD") : F("BACKWARD"));
             } else {
               Serial.println(val ? F("ON") : F("OFF"));

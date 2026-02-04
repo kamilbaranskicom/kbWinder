@@ -14,7 +14,9 @@ struct Task {
   float startRPM;
   float targetRPM;
   float currentRPM;
-  float accelRate;  // RPM zwiększane na krok Mastera
+  int accelRate;           // RPM/s (np. 100 oznacza wzrost o 100 RPM w sekundę)
+  unsigned long cachedDelay;     // Przeliczony interwał w mikrosekundach
+  unsigned long lastRampUpdate;  // Czas ostatniej zmiany RPM (ms) 
   bool isStarted;
   bool isDecelerating;
   bool isComplete;
@@ -23,7 +25,7 @@ struct Task {
   unsigned long taskLastPinged;
 };
 
-#define QUEUE_SIZE 6
+#define QUEUE_SIZE 5
 Task taskQueue[QUEUE_SIZE];
 int head = 0;  // Index of the current task
 int tail = 0;  // Index where next task will be added

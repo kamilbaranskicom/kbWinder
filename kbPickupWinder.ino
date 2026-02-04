@@ -1,7 +1,7 @@
-const char version[4] = "0.1\0";
+const char version[4] = "1.0\0";
 
 #include "eeprom.h"
-#include "kbPickupWinder.h"
+#include "kbWinder.h"
 #include "serial.h"
 #include "taskqueue.h"
 #include "variables.h"
@@ -77,7 +77,7 @@ bool parseStartCommandNumericValues(String params) {
   if (count >= 5)
     active.rampRPM = (int)vals[4];
   if (count >= 6)
-    active.startOffset = (long)vals[5];
+    active.startOffset = (float)vals[5];
 
   return true;
 }
@@ -108,15 +108,14 @@ void initiateWinding() {
   // KROK 2: Dojazd do offsetu
   // taskState, motor, targetPosition, isRelative=false, rpm, ramp
   if (cfg.useStartOffset) {
-    enqueueTask(MOVING, 'T', active.startOffset, false, cfg.maxRPM_T, 0.1,
-                false);
+    enqueueTask(MOVING, 'T', active.startOffset * stepsPerMM, false,
+                cfg.maxRPM_T, cfg.defaultRamp_T, false);
   }
 
-  // KROK 3: Nawijanie (na końcu kolejki)
-  float rampValue = (float)active.rampRPM / 1000.0; // Scale ramp for engine
+  // KROK 3: Nawijanie
   // taskState, motor, targetSteps, isRelative=true, rpm, ramp
   enqueueTask(RUNNING, 'S', active.totalTurns * cfg.stepsPerRevW, true,
-              getMaxRPMForCurrentPreset(), rampValue, false);
+              getMaxRPMForCurrentPreset(), active.rampRPM, false);
 
   Serial.println(F("MSG: Winding sequence enqueued."));
 
@@ -190,18 +189,20 @@ void handleGotoCommand(String cmd) {
 
   if (posStr == F("START")) {
     // GOTO START goes to active preset start offset
-    enqueueTask(MOVING, 'T', active.startOffset, false, rpm, 0.1, false);
+    enqueueTask(MOVING, 'T', active.startOffset * stepsPerMM, false, rpm,
+                cfg.defaultRamp_T, false);
   } else if (posStr == F("ZERO")) {
     // GOTO ZERO goes to zero
-    enqueueTask(MOVING, 'T', 0, false, rpm, 0.1, false);
+    enqueueTask(MOVING, 'T', 0, false, rpm, cfg.defaultRamp_T, false);
   } else if (posStr == F("BACKOFF")) {
     // GOTO BACKOFF goes to backoff distance!
     enqueueTask(MOVING, 'T', cfg.backoffDistanceMM * stepsPerMM, false, rpm,
-                0.1, false);
+                cfg.defaultRamp_T, false);
   } else {
     // GOTO <absPos>
     long targetPosInSteps = (long)(posStr.toFloat() * stepsPerMM);
-    enqueueTask(MOVING, 'T', targetPosInSteps, false, rpm, 0.1, false);
+    enqueueTask(MOVING, 'T', targetPosInSteps, false, rpm, cfg.defaultRamp_T,
+                false);
   }
 }
 
@@ -213,6 +214,7 @@ void moveManual(String cmd, bool isJogMove) {
   param.trim();
   float val;
   int rpm;
+  int ramp;
 
   int spaceIdx = param.indexOf(' ');
 
@@ -229,29 +231,19 @@ void moveManual(String cmd, bool isJogMove) {
 
   if (motor == 'W') {
     steps = (long)(val * cfg.stepsPerRevW);
+    ramp = min(active.rampRPM, cfg.defaultRamp_W);
   } else {
     steps = (long)(val * stepsPerMM);
+    ramp = cfg.defaultRamp_T;
   }
 
   // true = ruch relatywny, targetSteps to abs(steps), dir ustawiony
-  enqueueTask(MOVING, motor, steps, true, rpm, 0.1, isJogMove);
+  enqueueTask(MOVING, motor, steps, true, rpm, ramp, isJogMove);
 }
 
 // --- CORE FUNCTIONS: SETUP & LOOP ---
 
 void setup() {
-  initHardware();
-  initSerial(57600);
-
-  // nextionSerial.begin(9600);
-  loadMachineConfiguration();
-
-  Serial.println(F("At your service, Your Majesty!\n"));
-  printHelp();
-  Serial.println();
-}
-
-void initHardware() {
   pinMode(EN, OUTPUT);
   pinMode(W_STEP, OUTPUT);
   pinMode(W_DIR, OUTPUT);
@@ -259,6 +251,18 @@ void initHardware() {
   pinMode(T_DIR, OUTPUT);
   pinMode(LIMIT_PIN, INPUT_PULLUP);
   digitalWrite(EN, HIGH);
+
+  Serial.begin(57600);
+  Serial.print(F("\n\n--- kbWinder OS V"));
+  Serial.print(version);
+  Serial.println(F("---"));
+
+  // nextionSerial.begin(9600);
+  loadMachineConfiguration();
+
+  Serial.println(F("At your service, Your Majesty!\n"));
+  printHelp();
+  Serial.println();
 }
 
 void loop() {
@@ -293,7 +297,7 @@ void initiateHoming(int speed) {
 
   // taskState, motor, targetSteps=1M steps (as a safety limit),
   // isRelative=true, rpm, ramp
-  enqueueTask(HOMING, 'T', -maxTravel, true, speed, 0.05, false);
+  enqueueTask(HOMING, 'T', -maxTravel, true, speed, cfg.defaultRamp_T, false);
 
   Serial.print(F("MSG: Homing added to queue at "));
   Serial.print(speed);
@@ -335,13 +339,22 @@ void startTask(Task *t) {
     t->dir = (diff >= 0) ? 1 : -1;
   }
   t->currentRPM = t->startRPM;
-  lastStepMicros = micros();
+
   t->taskStarted = millis();
   t->taskLastPinged = t->taskStarted;
+  t->lastRampUpdate = t->taskStarted;
+  calculateCachedDelay(t);
   digitalWrite(EN, LOW); // Prąd na silniki
   t->isStarted = true;
   Serial.println(F("Task started."));
   printStatus();
+  lastStepMicros = micros();
+}
+
+void calculateCachedDelay(Task *t) {
+  int spr = (t->state == RUNNING || t->motor == 'W') ? cfg.stepsPerRevW
+                                                     : cfg.stepsPerRevT;
+  t->cachedDelay = 60000000L / ((unsigned long)t->currentRPM * spr);
 }
 
 void executeMotion(Task *t) {
@@ -356,15 +369,7 @@ void executeMotion(Task *t) {
     startTask(t);
   }
 
-  // Jeśli trwa hamowanie do pauzy i osiągnęliśmy prędkość minimalną
-  if (isPauseRequested && t->currentRPM <= t->startRPM) {
-    t->prevState = t->state; // Zapamiętaj czy to był RUNNING, MOVING czy HOMING
-    t->state = PAUSED;
-    isPauseRequested = false;
-    digitalWrite(EN, HIGH); // Odłącz prąd (bezpieczeństwo i chłodzenie)
-    Serial.println(F("MSG: Status set to PAUSED"));
-    return;
-  }
+  handlePause(t);
 
   if (t->isJogMove && (millis() - t->taskLastPinged > 2000)) {
     t->state = ERROR;
@@ -372,18 +377,16 @@ void executeMotion(Task *t) {
   } else {
 
     unsigned long now = micros();
-    // Select Master Motor for timing calculation
-    int spr = (t->state == RUNNING || t->motor == 'W') ? cfg.stepsPerRevW
-                                                       : cfg.stepsPerRevT;
-    unsigned long currentDelay =
-        60000000L / ((unsigned long)t->currentRPM * spr);
 
-    if (now - lastStepMicros >= currentDelay) {
-      lastStepMicros += currentDelay;
+    if (now - lastStepMicros >= t->cachedDelay) {
+      lastStepMicros += t->cachedDelay;
+      // lastStepMicros = now;
 
       stepActiveMotor(t);
-      updateTaskRamp(t);
       t->currentSteps++;
+
+      printIfWinderJustFinished10Revs(t);
+      updateTaskRamp(t);
 
       handleHomingLogic(t);
       handleTaskEnd(t);
@@ -393,6 +396,40 @@ void executeMotion(Task *t) {
     Serial.println(F("ERROR encountered. Stopping motors, clearing queue."));
     digitalWrite(EN, HIGH);
     clearQueue();
+  }
+}
+
+void printIfWinderJustFinished10Revs(Task *t) {
+  // Logujemy tylko gdy kręci się winder (tryb RUNNING lub zadanie dla silnika
+  // 'W')
+  if (t->state == RUNNING || t->motor == 'W') {
+    long stepsPer10Rev = (long)cfg.stepsPerRevW * 10;
+    if (t->currentSteps > 0 && t->currentSteps % stepsPer10Rev == 0) {
+      long currentTurns = t->currentSteps / cfg.stepsPerRevW;
+      printCurrentProgress("Progress", currentTurns, active.totalTurns);
+    }
+  }
+}
+
+void printCurrentProgress(String msg, float currentTurns, int totalTurns) {
+  Serial.print(F("MSG: "));
+  Serial.print(msg);
+  Serial.print(F(" ("));
+  Serial.print(currentTurns, 1);
+  Serial.print(F(" turns / "));
+  Serial.print(totalTurns);
+  Serial.println(F(")"));
+}
+
+void handlePause(Task *t) {
+  // Jeśli trwa hamowanie do pauzy i osiągnęliśmy prędkość minimalną
+  if (isPauseRequested && t->currentRPM <= t->startRPM) {
+    t->prevState = t->state; // Zapamiętaj czy to był RUNNING, MOVING czy HOMING
+    t->state = PAUSED;
+    isPauseRequested = false;
+    digitalWrite(EN, HIGH); // Odłącz prąd (bezpieczeństwo i chłodzenie)
+    Serial.println(F("MSG: Status set to PAUSED"));
+    return;
   }
 }
 
@@ -428,11 +465,7 @@ void stepActiveMotor(Task *t) {
       layerDir *= -1;
       currentLayerSteps = 0;
       float currentTurns = (float)t->currentSteps / cfg.stepsPerRevW;
-      Serial.print(F("MSG: Layer Flip ("));
-      Serial.print(currentTurns, 1);
-      Serial.print(F(" turns / "));
-      Serial.print(active.totalTurns);
-      Serial.println(F(")"));
+      printCurrentProgress("Layer Flip", currentTurns, active.totalTurns);
     }
     digitalWrite(W_STEP, LOW);
   } else {
@@ -472,6 +505,13 @@ void stepActiveMotor(Task *t) {
 }
 
 void updateTaskRamp(Task *t) {
+  unsigned long now = millis();
+  if (now - t->lastRampUpdate < 10)
+    return; // Aktualizuj rampę co 10ms (100Hz)
+
+  float dt = (now - t->lastRampUpdate) / 1000.0; // Delta czasu w sekundach
+  t->lastRampUpdate = now;
+
   long stepsRemaining = t->targetSteps - t->currentSteps;
 
   // Flaga wymuszająca hamowanie: albo żądanie pauzy, albo naturalny koniec
@@ -483,21 +523,23 @@ void updateTaskRamp(Task *t) {
   bool arrivalDecel = (t->state != HOMING || homingPhase != 0) &&
                       (stepsRemaining <= t->accelDistance);
 
+  float rpmStep = t->accelRate * dt; // Ile RPM dodać/odjąć w tym kroku czasowym
+
   if (forceDecel || arrivalDecel) {
     t->isDecelerating = true;
     if (t->currentRPM > t->startRPM) {
       // Przy pauzie możemy hamować nieco szybciej (accelRate * 3)
-      float decelStep = isPauseRequested ? (t->accelRate * 3.0) : t->accelRate;
-      t->currentRPM -= decelStep;
+      t->currentRPM -= (isPauseRequested ? rpmStep * 3 : rpmStep);
       if (t->currentRPM < t->startRPM)
         t->currentRPM = t->startRPM;
     }
   } else if (t->currentRPM < t->targetRPM) {
-    t->currentRPM += t->accelRate;
+    t->currentRPM += rpmStep;
     t->accelDistance++;
     if (t->currentRPM > t->targetRPM)
       t->currentRPM = t->targetRPM;
   }
+  calculateCachedDelay(t);
 }
 
 void handleHomingLogic(Task *t) {
@@ -544,6 +586,7 @@ void handleHomingLogic(Task *t) {
 
     t->targetRPM = 20.0;
     t->currentRPM = 20.0;
+    t->accelRate = 0;
     t->dir = -t->dir;
     digitalWrite(T_DIR, (t->dir == 1) ? cfg.dirT : !cfg.dirT);
     Serial.println(F("MSG: Phase 2 (Slow Touch)"));
