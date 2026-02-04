@@ -347,8 +347,6 @@ struct SystemConfiguration {
     nbsEnabled = false;
     ssdpEnabled = true;
     dnsServerEnabled = true;
-    midiEnabled = true;
-    hardwareInputsEnabled = true;
     webStaticFilesPath = "";
   }
 
@@ -366,8 +364,6 @@ struct SystemConfiguration {
       root["nbsEnabled"] = nbsEnabled;
       root["ssdpEnabled"] = ssdpEnabled;
       root["dnsServerEnabled"] = dnsServerEnabled;
-      root["midiEnabled"] = midiEnabled;
-      root["hardwareInputsEnabled"] = hardwareInputsEnabled;
       root["webStaticFilePath"] = webStaticFilesPath;
     }
   }
@@ -392,8 +388,6 @@ struct SystemConfiguration {
       ssdpEnabled = src["ssdpEnabled"] | ssdpEnabled;
       dnsServerEnabled = src["dnsServerEnabled"] | dnsServerEnabled;
     }
-    midiEnabled = src["midiEnabled"] | midiEnabled;
-    hardwareInputsEnabled = src["hardwareInputsEnabled"] | hardwareInputsEnabled;
     webStaticFilesPath = src["webStaticFilesPath"] | webStaticFilesPath;
   }
 };
@@ -413,12 +407,10 @@ struct UiConfiguration {
   static const int MAX_SECTIONS = 12;
   static const int MAX_SECTION_NAME_LEN = 16;
 
-  uint8_t buttonOrder;
   char sectionOrder[MAX_SECTIONS][MAX_SECTION_NAME_LEN];
   int sectionCount;
 
   void resetToFactoryDefaults() {
-    buttonOrder = SLOW_STOP_FAST;
     sectionCount = 9;
     const char *defaults[] = {"manual", "system", "log", "status", "network", "midi", "hardware", "misc", "save"};
     for (int i = 0; i < sectionCount; i++) {
@@ -427,14 +419,12 @@ struct UiConfiguration {
   }
 
   void toJson(JsonObject root, bool isPublic) const {
-    root["buttonOrder"] = buttonOrder;
     JsonArray arr = root.createNestedArray("sectionOrder");
     for (int i = 0; i < sectionCount; i++)
       arr.add(sectionOrder[i]);
   }
 
   void fromJson(JsonObjectConst src, bool isInternal = false) {
-    buttonOrder = src["buttonOrder"] | buttonOrder;
     if (isInternal || !isSystemLocked()) {
       JsonArrayConst arr = src["sectionOrder"];
       if (!arr.isNull()) {
