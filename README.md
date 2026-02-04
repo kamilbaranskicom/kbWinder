@@ -5,7 +5,7 @@ This is my approach to pickup coil (or spool of thread ;P ) winder firmware. Ded
 
 I used [original sandy9159 idea](https://github.com/sandy9159/DIY-Arduino-based-Guitar-Pickup-Coil-Winder), but created better (and - most of all - **working**) software.
 
-The software pushes the Arduino Nano to its edges - both on RAM, and speed on my TMC2209 (as it has 1600 steps per revolution), so if you can use A4988 with 400/800 steps/rev DO IT. The ESP with its WiFi/AsyncWebServer/Websockets is also pushed.
+The software pushes the Arduino Nano to its edges - both on RAM, and speed on my TMC2209 (as it has 1600 steps per revolution), so if you can use A4988 with 400/800 steps/rev DO IT. The ESP with its WiFi/AsyncWebServer/Websockets is also a bit pushed.
 
 ## Features:
 - Presets for winding (with load/save/delete/export)
