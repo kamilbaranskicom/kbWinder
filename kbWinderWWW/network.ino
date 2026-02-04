@@ -86,7 +86,7 @@ void initializeNBS() {
   }
 
   if (NBNS.begin(configuration.system.hostName)) {
-    logMessage(LOG_LEVEL_INFO, "NETBIOS started.");
+    logMessage(LOG_LEVEL_INFO, F("NETBIOS started."));
   }
 }
 
@@ -105,8 +105,8 @@ void initializePushOTA() {
 
   ArduinoOTA.setHostname(configuration.system.hostName);
 
-  ArduinoOTA.onStart([]() { logMessage(LOG_LEVEL_INFO, "Start"); });
-  ArduinoOTA.onEnd([]() { logMessage(LOG_LEVEL_INFO, "\nEnd"); });
+  ArduinoOTA.onStart([]() { logMessage(LOG_LEVEL_INFO, F("Start")); });
+  ArduinoOTA.onEnd([]() { logMessage(LOG_LEVEL_INFO, F("\nEnd")); });
   ArduinoOTA.onProgress(
       [](unsigned int progress, unsigned int total) { logMessagef(LOG_LEVEL_INFO, "Progress: %u%%\r", (progress / (total / 100))); });
   ArduinoOTA.onError([](ota_error_t error) {
@@ -124,7 +124,7 @@ void initializePushOTA() {
   });
 
   ArduinoOTA.begin();
-  logMessage(LOG_LEVEL_INFO, "Push OTA enabled");
+  logMessage(LOG_LEVEL_INFO, F("Push OTA enabled"));
 }
 #endif
 
@@ -330,7 +330,7 @@ void processMDNS() {
 }
 
 void debugNetworkInterfaces() {
-  logMessage(LOG_LEVEL_DEBUG, "--- lwIP Interface Debug ---");
+  logMessage(LOG_LEVEL_DEBUG, F("--- lwIP Interface Debug ---"));
 
   struct netif *netif;
   // netif_list to globalna lista interfejsów w lwIP
