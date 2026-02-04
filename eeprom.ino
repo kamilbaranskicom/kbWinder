@@ -82,13 +82,27 @@ bool areAnySettingNonsense(const MachineConfig &c) {
 }
 
 int findPresetIndex(String name) {
+  name.trim();
+  if (name.length() == 0)
+    return -1;
+
+  // Konwertujemy szukaną nazwę na tymczasowy bufor char, by uniknąć Stringów w
+  // pętli
+  char searchBuf[16];
+  name.toCharArray(searchBuf, 16);
+
   WindingPreset p;
   for (int i = 0; i < MAX_PRESETS; i++) {
     EEPROM.get(EEPROM_PRESET_START + (i * sizeof(WindingPreset)), p);
-    if (String(p.name) == name)
-      return i;
+
+    // Jeśli slot jest całkowicie pusty (0 lub 255) - koniec listy (brak dziur)
     if (p.name[0] == 0 || (uint8_t)p.name[0] == 255)
-      break; // End of list
+      break;
+
+    // Porównujemy surowe tablice znaków - najpewniejsza metoda w C
+    if (strcmp(p.name, searchBuf) == 0) {
+      return i;
+    }
   }
   return -1;
 }
@@ -156,34 +170,100 @@ bool loadPresetByName(String name) {
   return true;
 }
 
-void savePreset(String name) {
-  if (name.length() == 0)
-    return;
+char *trimChar(char *str) {
+  char *end;
+  while (isspace((unsigned char)*str))
+    str++;
+  if (*str == 0)
+    return str;
+  end = str + strlen(str) - 1;
+  while (end > str && isspace((unsigned char)*end))
+    end--;
+  end[1] = '\0';
+  return str;
+}
 
-  // Clean name and check for existing
-  name.replace("\"", "");
-  int index = findPresetIndex(name);
+bool savePreset(String cmd) {
+  cmd.trim();
 
-  // If not found, find first empty slot
-  if (index == -1) {
-    index = findFirstEmptyPresetSlot();
+  // 1. Oczyszczenie komendy z przedrostka "SAVE"
+  if (cmd.startsWith("SAVE")) {
+    cmd = cmd.substring(4);
+    cmd.trim();
   }
+
+  // Tworzymy NOWY obiekt zamiast kopii active, żeby nie dziedziczyć błędnych
+  // nazw
+  WindingPreset pToSave;
+  memset(&pToSave, 0, sizeof(WindingPreset));
+
+  if (cmd.length() > 0) {
+    if (cmd.indexOf(',') != -1) {
+      // SCENARIUSZ 1: IMPORT CSV
+      char buf[128];
+      cmd.toCharArray(buf, sizeof(buf));
+      char *token = strtok(buf, ",");
+
+      if (token) {
+        String n = String(token);
+        n.trim();
+        n.toCharArray(pToSave.name, sizeof(pToSave.name));
+      }
+
+      // Wczytujemy resztę wartości do pToSave
+      if ((token = strtok(NULL, ",")))
+        pToSave.wireDia = atof(token);
+      if ((token = strtok(NULL, ",")))
+        pToSave.coilWidth = atof(token);
+      if ((token = strtok(NULL, ",")))
+        pToSave.totalTurns = atol(token);
+      if ((token = strtok(NULL, ",")))
+        pToSave.targetRPM = atoi(token);
+      if ((token = strtok(NULL, ",")))
+        pToSave.rampRPM = atoi(token);
+      if ((token = strtok(NULL, ",")))
+        pToSave.startOffset = atof(token);
+
+      // Dopiero teraz aktualizujemy active (gdy mamy pewność, że wczytaliśmy
+      // CSV)
+      active = pToSave;
+    } else {
+      // SCENARIUSZ 2: SAVE NowaNazwa
+      // Nazwa to po prostu trimowany cmd
+      cmd.toCharArray(pToSave.name, sizeof(pToSave.name));
+
+      // Kopiujemy resztę wartości z active
+      pToSave.wireDia = active.wireDia;
+      pToSave.coilWidth = active.coilWidth;
+      pToSave.totalTurns = active.totalTurns;
+      pToSave.targetRPM = active.targetRPM;
+      pToSave.rampRPM = active.rampRPM;
+      pToSave.startOffset = active.startOffset;
+
+      strncpy(active.name, pToSave.name, sizeof(active.name));
+    }
+  } else {
+    // SCENARIUSZ 3: SAVE (Puste)
+    pToSave = active;
+  }
+
+  // --- FINALNY ZAPIS ---
+  if (pToSave.name[0] == 0)
+    return false;
+
+  int index = findPresetIndex(pToSave.name);
+  if (index == -1)
+    index = findFirstEmptyPresetSlot();
 
   if (index != -1) {
-    // Copy current "active" parameters to a preset structure
-    WindingPreset pToSave = active;
-    memset(pToSave.name, 0, sizeof(pToSave.name));
-    name.toCharArray(pToSave.name, 16);
-
-    int addr = EEPROM_PRESET_START + (index * sizeof(WindingPreset));
-    EEPROM.put(addr, pToSave);
-
+    EEPROM.put(EEPROM_PRESET_START + (index * sizeof(WindingPreset)), pToSave);
     Serial.print(F("SYSTEM: Preset '"));
     Serial.print(pToSave.name);
-    Serial.println(F("' saved to EEPROM."));
-  } else {
-    Serial.println(F("ERROR: EEPROM full. Cannot save preset."));
+    Serial.print(F("' saved to slot "));
+    Serial.println(index);
+    return true;
   }
+  return false;
 }
 
 void deletePreset(String name) {
@@ -221,4 +301,13 @@ void deletePreset(String name) {
   Serial.print(F("SYSTEM: Preset '"));
   Serial.print(name);
   Serial.println(F("' deleted and EEPROM compacted."));
+}
+
+void formatPresets() {
+  WindingPreset empty;
+  memset(&empty, 0, sizeof(WindingPreset));
+  for (int i = 0; i < MAX_PRESETS; i++) {
+    EEPROM.put(EEPROM_PRESET_START + (i * sizeof(WindingPreset)), empty);
+  }
+  Serial.println(F("SYSTEM: EEPROM Presets wiped."));
 }
