@@ -1,0 +1,19 @@
+ColumnLimit: 140
+# Bazujemy na stylu LLVM, ale go modyfikujemy
+BasedOnStyle: LLVM
+IndentWidth: 2
+
+# To zapobiega "uciekaniu" argumentów do prawej strony (nawiasu)
+# Zamiast wyrównywać do nawiasu, użyje zwykłego wcięcia (np. 2 spacje)
+AlignAfterOpenBracket: DontAlign
+
+# To sprawia, że ciało lambdy jest wcięte względem linii, 
+# w której się zaczęła, a nie dryfuje w nieskończoność
+LambdaBodyIndentation: OuterScope
+
+# Opcjonalnie: wymuś łamanie przed lambdą, jeśli jest długa
+AllowShortLambdasOnASingleLine: All
+
+# Zachowanie spójności przy wywołaniach funkcji
+BinPackArguments: false
+BinPackParameters: false

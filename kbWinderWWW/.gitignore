@@ -1,0 +1,6 @@
+build/
+.vscode/
+.continue/
+data/configuration.json
+todo.txt
+/tools/compile.log

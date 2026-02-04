@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--, maximum-scale=1.0 , user-scalable=no-->
+    <title>kbWinder control</title>
+    <link rel="stylesheet" href="kbWinder.css" />
+    <script src="kbWinder.js" defer></script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.json" />
+  </head>
+  <body class="control-page">
+    <main class="control-container">
+      <section id="log">
+        <div id="systemLog"></div>
+        <form
+          onsubmit="
+            event.preventDefault();
+            let c = document.getElementById('commandInput');
+            sendCommand(c.value);
+            c.value = '';
+          "
+          class="pairedButtons commandInputSection"
+        >
+          <input type="text" id="commandInput" placeholder="Enter command here" />
+          <button type="submit">Send</button>
+        </form>
+      </section>
+
+      <section class="controlButtons" id="controlButtons">
+        <div class="pairedButtons">
+          <div class="pairedButtons mainButtons">
+            <button id="start" onclick="sendCommand('START')">▶︎ START</button>
+            <button id="stop" onclick="sendCommand('STOP')">⏹︎ STOP</button>
+          </div>
+          <div class="pairedButtons">
+            <button id="pause" onclick="sendCommand('PAUSE')">⏸︎ PAUSE</button>
+            <button id="resume" onclick="sendCommand('RESUME')">⏯︎ RESUME</button>
+          </div>
+        </div>
+        <div class="pairedButtonss">
+          <section class="pairedButtons">
+            <button id="status" onclick="sendCommand('STATUS')">📊 STATUS</button>
+            <button id="getRuntime" onclick="sendCommand('GET RUNTIME')">⚙️ GET RUNTIME</button>
+          </section>
+          <section class="pairedButtons">
+            <button id="help" onclick="sendCommand('HELP')">❓ HELP</button>
+            <button id="longHelp" onclick="sendCommand('LONGHELP')">🛟 LONGHELP</button>
+            <button id="setHelp" onclick="sendCommand('SETHELP')">🛠️ SETHELP</button>
+          </section>
+        </div>
+        <section>
+          <div class="pairedButtons">
+            <div class="pairedButtons">
+              <button id="seekZero" onclick="sendCommand('SEEK ZERO')">🔎0️⃣ SEEK ZERO</button>
+              <button id="setZero" onclick="sendCommand('SET ZERO')">✅0️⃣ SET ZERO</button>
+              <button id="gotoZero" onclick="sendCommand('GOTO ZERO')">👉0️⃣ GOTO ZERO</button>
+            </div>
+            <div class="pairedButtons">
+              <button id="gotoBackoff" onclick="sendCommand('GOTO BACKOFF')">👉📏 GOTO BACKOFF</button>
+              <button id="gotoStart" onclick="sendCommand('GOTO START')">👉🏁 GOTO START</button>
+            </div>
+          </div>
+          <div class="pairedButtons">
+            <input type="number" id="absPos" min="0" max="300" step="0.01" value="0" />
+            <button id="goToAbsPos" onclick="sendCommand('GOTO ' + document.getElementById('absPos').value)">👉🎯 GOTO ABS POSITION</button>
+          </div>
+        </section>
+      </section>
+      <section class="manualButtons" id="manualButtons">
+        <div class="pairedButtons">
+          <div class="pairedButtons">
+            <button id="moveWinderMinus" onclick="sendCommand('W -1')">W -1 rev</button>
+            <button id="moveWinderPlus" onclick="sendCommand('W +1')">W +1 rev</button>
+          </div>
+          <div class="pairedButtons">
+            <button id="moveTraverseMinusMm" onclick="sendCommand('T -1')">T -1 mm</button>
+            <button id="moveTraversePlusMm" onclick="sendCommand('T +1')">T +1 mm</button>
+          </div>
+          <div class="pairedButtons">
+            <button id="moveTraverseMinus10mm" onclick="sendCommand('T -10')">T -10 mm</button>
+            <button id="moveTraversePlus10mm" onclick="sendCommand('T +10')">T +10 mm</button>
+          </div>
+        </div>
+        <section class="mainButtons pairedButtons jogButtons">
+          <button id="jogWinderMinus" onpointerdown="startJog('JOG W -1000')" onpointerup="stopJog()" onpointerleave="stopJog()">W-</button>
+          <button id="jogWinderPlus" onpointerdown="startJog('JOG W +1000')" onpointerup="stopJog()" onpointerleave="stopJog()">W+</button>
+          <button id="jogTraverseMinus" onpointerdown="startJog('JOG T -100')" onpointerup="stopJog()" onpointerleave="stopJog()">T-</button>
+          <button id="jogTraversePlus" onpointerdown="startJog('JOG T +100')" onpointerup="stopJog()" onpointerleave="stopJog()">T+</button>
+        </section>
+      </section>
+      <section class="presetSettings" id="presetSettings">
+        <div class="sectionHeader">
+          <h3>Preset settings</h3>
+          <button id="resume" onclick="sendCommand('GET PRESET')">⬇️ GET PRESET</button><button id="resume" onclick="setAllSettings('presetSettings')">⬆️ SET PRESET</button>
+        </div>
+        <div>
+          <input type="number" id="WIRE" min="0.01" max="20" step="0.01" value="0.10" onChange="sendCommand('SET WIRE ' + this.value)" />
+          <label for="WIRE">Wire Diameter (mm)</label>
+        </div>
+        <div>
+          <input type="number" id="COIL_LENGTH" min="0.1" max="300" step="0.01" value="10" onChange="sendCommand('SET COIL LENGTH ' + this.value)" />
+          <label for="COIL_LENGTH">Coil Length (mm)</label>
+        </div>
+        <div>
+          <input type="number" id="TURNS" min="1" max="10000" step="1" value="1000" onChange="sendCommand('SET TURNS ' + this.value)" />
+          <label for="TURNS">Turns</label>
+        </div>
+        <div>
+          <input type="number" id="TARGET_RPM" min="1" max="500" step="1" value="100" onChange="sendCommand('SET TARGET RPM ' + this.value)" />
+          <label for="TARGET_RPM">rpm</label>
+        </div>
+        <div>
+          <input type="number" id="RAMP" min="0.1" max="30" step="0.1" value="10" onChange="sendCommand('SET RAMP ' + this.value)" />
+          <label for="RAMP">Ramp (rpm/sec)</label>
+        </div>
+        <div class="sectionHeader">
+          <div>
+            <input type="number" id="START_OFFSET" min="1" max="500" step="0.01" value="10" onChange="sendCommand('SET START OFFSET ' + this.value)" />
+            <label for="START_OFFSET">Start Offset (mm)</label>
+          </div>
+          <button id="gotoStartOffset" onclick="sendCommand('GOTO ' + document.getElementById('START_OFFSET').value)">👉🏁 GOTO START</button>
+        </div>
+        <div class="sectionHeader">
+          <div>
+            <input type="text" id="NAME" maxlength="15" value="INIT" onChange="sendCommand('SET NAME ' + this.value)" />
+            <label for="NAME">Preset Name</label>
+          </div>
+          <button id="savePreset" onclick="sendCommand('SAVE ' + document.getElementById('NAME').value)">💾 SAVE PRESET</button>
+        </div>
+        <div class="pairedButtons">
+          <button id="loadPreset" onclick="sendCommand('LOAD ' + document.getElementById('NAME').value)">📂 LOAD PRESET</button>
+          <button id="deletePreset" onclick="sendCommand('DELETE ' + document.getElementById('NAME').value)">🗑️ DELETE PRESET</button>
+          <button id="exportCSV" onclick="sendCommand('EXPORT')">🗃️ EXPORT CSV</button>
+        </div>
+      </section>
+      <section class="machineSettings">
+        <div class="sectionHeader">
+          <h3>Machine settings</h3>
+          <button id="resume" onclick="sendCommand('GET MACHINE')">⬇️ GET MACHINE</button>
+        </div>
+        <div>
+          <input type="number" id="SCREW_PITCH" min="0.001" max="5" step="0.001" value="1.000" onChange="sendCommand('SET SCREW PITCH ' + this.value)" />
+          <label for="SCREW_PITCH">SCREW PITCH</label>
+        </div>
+        <div>
+          <input type="number" id="WINDER_STEPS_PER_REV" min="1" max="6400" step="1" value="1600" onChange="sendCommand('SET WINDER STEPS PER REV ' + this.value)" />
+          <label for="WINDER_STEPS_PER_REV">WINDER STEPS PER REV</label>
+        </div>
+        <div>
+          <input type="number" id="TRAVERSE_STEPS_PER_REV" min="1" max="6400" step="1" value="1600" onChange="sendCommand('SET TRAVERSE STEPS PER REV ' + this.value)" />
+          <label for="TRAVERSE_STEPS_PER_REV">TRAVERSE STEPS PER REV</label>
+        </div>
+        <div>
+          <input type="number" id="WINDER_MAX_SPEED" min="1" max="1500" step="1" value="400" onChange="sendCommand('SET WINDER MAX SPEED ' + this.value)" />
+          <label for="WINDER_MAX_SPEED">WINDER MAX SPEED</label>
+        </div>
+        <div>
+          <input type="number" id="TRAVERSE_MAX_SPEED" min="1" max="1000" step="1" value="250" onChange="sendCommand('SET TRAVERSE MAX SPEED ' + this.value)" />
+          <label for="TRAVERSE_MAX_SPEED">TRAVERSE MAX SPEED</label>
+        </div>
+        <div>
+          <input type="number" id="WINDER_START_SPEED" min="1" max="1500" step="1" value="40" onChange="sendCommand('SET WINDER START SPEED ' + this.value)" />
+          <label for="WINDER_START_SPEED">WINDER START SPEED</label>
+        </div>
+        <div>
+          <input type="number" id="TRAVERSE_START_SPEED" min="1" max="1000" step="1" value="40" onChange="sendCommand('SET TRAVERSE START SPEED ' + this.value)" />
+          <label for="TRAVERSE_START_SPEED">TRAVERSE START SPEED</label>
+        </div>
+        <div>
+          <input type="checkbox" id="WINDER_DIRECTION" min="1" max="100" step="1" value="BACKWARD" onChange="sendCommand('SET WINDER DIRECTION ' + (this.checked ? 'FORWARD' : 'BACKWARD'))" />
+          <label for="WINDER_DIRECTION">WINDER DIRECTION</label>
+        </div>
+        <div>
+          <input type="checkbox" id="TRAVERSE_DIRECTION" min="1" max="100" step="1" value="BACKWARD" onChange="sendCommand('SET TRAVERSE DIRECTION ' + (this.checked ? 'FORWARD' : 'BACKWARD'))" />
+          <label for="TRAVERSE_DIRECTION">TRAVERSE DIRECTION</label>
+        </div>
+        <div>
+          <input type="checkbox" id="LIMIT_SWITCH" min="1" max="100" step="1" value="ON" onChange="sendCommand('SET LIMIT SWITCH ' + (this.checked ? 'ON' : 'OFF'))" />
+          <label for="LIMIT_SWITCH">LIMIT SWITCH</label>
+        </div>
+        <div>
+          <input type="checkbox" id="HOME_BEFORE_START" min="1" max="100" step="1" value="OFF" onChange="sendCommand('SET HOME BEFORE START ' + (this.checked ? 'ON' : 'OFF'))" />
+          <label for="HOME_BEFORE_START">HOME BEFORE START</label>
+        </div>
+        <div>
+          <input type="checkbox" id="USE_START_OFFSET" min="1" max="100" step="1" value="OFF" onChange="sendCommand('SET USE START OFFSET ' + (this.checked ? 'ON' : 'OFF'))" />
+          <label for="USE_START_OFFSET">USE START OFFSET</label>
+        </div>
+        <div>
+          <input type="number" id="BACKOFF_DISTANCE_MM" min="1" max="100" step="0.001" value="2.000" onChange="sendCommand('SET BACKOFF DISTANCE MM ' + this.value)" />
+          <label for="BACKOFF_DISTANCE_MM">BACKOFF DISTANCE</label>
+        </div>
+      </section>
+      <section id="runtime-stats"></section>
+      <div class="setup-link-wrapper"><a href="/setup">Controller Settings (WiFi etc)</a> &bullet; <span id="footer"></span></div>
+    </main>
+  </body>
+</html>

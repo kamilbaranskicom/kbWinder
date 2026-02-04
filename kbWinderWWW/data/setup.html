@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>kbWinder settings</title>
+    <link rel="stylesheet" href="kbWinder.css" />
+    <script src="kbWinder.js" defer></script>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="manifest" href="/manifest.json" />
+  </head>
+  <body class="setup-page" id="setup-page">
+    <div id="wifiSuccessBanner" class="banner hidden">
+      <div class="banner-content">
+        <h3>✅ Connected to: </h3>
+        <p>kbWinder is online. Use the addresses below to stay connected.</p>
+
+        <div class="info-grid">
+          <div class="address-row">
+            <strong><span id="valSSIDSTA">...</span> WiFi (STA):</strong>
+            <div class="copy-box">
+              <span id="valSTA">0.0.0.0</span>
+              <button
+                type="button"
+                class="btn-copy"
+                onclick="copyToClipboard(document.getElementById('valSTA').innerText)"
+              >
+                📋
+              </button>
+            </div>
+          </div>
+
+          <div class="address-row">
+            <strong><span id="valSSIDAP">...</span> WiFi (AP):</strong>
+            <div class="copy-box">
+              <span id="valAP">0.0.0.0</span>
+              <button
+                type="button"
+                class="btn-copy"
+                onclick="copyToClipboard(document.getElementById('valAP').innerText)"
+              >
+                📋
+              </button>
+            </div>
+          </div>
+
+          <div class="address-row">
+            <strong>Local Name (mDNS):</strong>
+            <div class="copy-box">
+              <span id="valMDNS">kbWinder.local</span>
+              <button
+                type="button"
+                class="btn-copy"
+                onclick="copyToClipboard(document.getElementById('valMDNS').innerText)"
+              >
+                📋
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <p><small>Tip: For concerts, you can stay connected to the Setup AP for maximum stability.</small></p>
+        <button class="btn-small" onclick="this.closest('.banner').classList.add('hidden')">Dismiss</button>
+      </div>
+    </div>
+    <div class="container">
+      <header>
+        <h1>kbWinder</h1>
+      </header>
+
+      <h2>Setup</h2>
+      <div class="container2">
+        <form id="setupForm">
+          <main class="form">
+            <section id="manual">
+              <h3 class="parent">Manual Control & Status</h3>
+              <fieldset class="child">
+                <div class="formfield manualbuttons" id="manualbuttons">
+                  <button id="slow">SLOW</button>
+                  <button id="stop">STOP</button>
+                  <button id="fast">FAST</button>
+                </div>
+                <div class="formfield">Back to <a href="/">control</a> page.</div>
+              </fieldset>
+            </section>
+
+            <section id="system">
+              <h3 class="parent">System Settings</h3>
+              <fieldset id="system-section" class="child">
+                <div class="formfield">
+                  <input id="hostName" type="text" maxlength="31" />
+                  <label for="hostName">Device Hostname</label>
+                </div>
+                <div class="formfield hidden">
+                  <input id="pushOTAEnabled" type="checkbox" />
+                  <label for="pushOTAEnabled">Enable Push OTA (Wireless updates)</label>
+                </div>
+                <div class="formfield">
+                  <input id="mdnsEnabled" type="checkbox" />
+                  <label for="mdnsEnabled"
+                    >Enable
+                    <span
+                      title="mDNS - allows user to access kbWinder with http://<devicename>.local/ . Compatible with Win10, Win11, macOS/iOS, Linux, Android."
+                      >mDNS</span
+                    ></label
+                  >
+                </div>
+                <div class="formfield hidden">
+                  <input id="nbsEnabled" type="checkbox" />
+                  <label for="nbsEnabled"
+                    >Enable
+                    <span
+                      title="NetBIOS - allows user to access kbWinder with http://<devicename>/ . Compatible with Windows and maybe more."
+                      >NetBIOS</span
+                    ></label
+                  >
+                </div>
+                <div class="formfield">
+                  <input id="ssdpEnabled" type="checkbox" />
+                  <label for="ssdpEnabled"
+                    >Enable
+                    <span title="SSDP - allows user to find kbWinder in 'Network' window in Windows.">SSDP</span></label
+                  >
+                </div>
+                <div class="formfield">
+                  <input id="dnsServerEnabled" type="checkbox" />
+                  <label for="dnsServerEnabled"
+                    >Enable
+                    <span
+                      title="DNS server is needed for cellphones to automatically open kbWinder page when kbWinder works as an Access Point. It responds with kbWinder IP for all requests capturing all the trafic to kbWinder."
+                      >DNS server for AP Captive Portal</span
+                    ></label
+                  >
+                </div>
+                <div class="formfield">
+                  <select id="serialLogLevel"></select>
+                  <label for="serialLogLevel">Logging Verbosity (Serial Console)</label>
+                </div>
+                <div class="formfield">
+                  <select id="webLogLevel"></select>
+                  <label for="webLogLevel">Logging Verbosity (Web log)</label>
+                </div>
+              </fieldset>
+            </section>
+
+            <section id="log">
+              <h3 class="parent systemLogParent">
+                <input id="webSystemLogEnabled" type="checkbox" checked />
+                <label for="webSystemLogEnabled">System Log</label>
+              </h3>
+              <div id="systemLog" class="selectable tobehidden0height"></div>
+            </section>
+
+            <section id="status">
+              <h3 class="parent">
+                <input type="checkbox" id="webStatusUpdate" />
+                <label for="webStatusUpdate">Status</label>
+              </h3>
+              <div class="child selectable">
+                <div class="formfield spread">
+                  <span>Free Heap:</span><span><var id="freeHeap">.....</var> bytes</span>
+                </div>
+                <div class="formfield spread">
+                  <span>Uptime:</span><span><var id="uptime">.....</var></span>
+                </div>
+                <div class="formfield spread">
+                  <span title="RSSI">WiFi Signal Strength:</span><span><var id="wifiRSSI">.....</var> dB</span>
+                </div>
+                <div class="formfield spread hidden" id="local-ver-row">
+                  <span>Installed version:</span>
+                  <var id="current-version">--</var>
+                </div>
+                <div class="formfield spread">
+                  <span id="remote-label">Current version:</span>
+                  <var id="remote-version">Checking...</var>
+                </div>
+                <div id="update-status" class="formfield center hidden">
+                  <div class="log-warning">
+                    <a href="https://kamilbaranski.com/kbWinder/firmware/" id="update-link">Newer version available!</a>
+                  </div>
+                  <button type="button" id="btn-start-update" class="btn-update">Update Firmware Now</button>
+                </div>
+              </div>
+            </section>
+
+            <section id="network">
+              <h3 class="parent">Network Configuration</h3>
+              <fieldset id="network-section" class="child">
+                <div class="formfield">
+                  <select id="wifiMode">
+                    <option value="0">STA with AP Fallback (Recommended)</option>
+                    <option value="1">Always Access Point</option>
+                    <option value="2">Always Station (Connect to Router)</option>
+                  </select>
+                  <label for="wifiMode">Operating Mode</label>
+                </div>
+
+                <div class="formfield info">Station (Client) Mode Settings</div>
+                <div class="child">
+                  <div class="formfield spread">
+                    <span>
+                      <input id="stationSsid" type="text" maxlength="31" />
+                      <label for="stationSsid">WiFi SSID</label>
+                    </span>
+                    <button type="button" id="scanBtn">Scan WiFi</button>
+                  </div>
+                  <div class="child">
+                    <div id="wifiScanResults" class="formfield hidden"></div>
+                  </div>
+                  <div class="formfield">
+                    <input id="stationPassword" type="password" maxlength="63" />
+                    <label for="stationPassword">WiFi Password</label>
+                  </div>
+                  <div class="formfield">
+                    <input id="stationDhcpEnabled" type="checkbox" />
+                    <label for="stationDhcpEnabled">Use DHCP (Automatic IP)</label>
+                  </div>
+
+                  <div id="static-ip-settings" class="indent tobedisabled">
+                    <div class="formfield">
+                      <input id="stationStaticIp" type="text" placeholder="192.168.1.100" />
+                      <label for="stationStaticIp">Static IP Address</label>
+                    </div>
+                    <div class="formfield">
+                      <input id="stationStaticMask" type="text" placeholder="255.255.255.0" />
+                      <label for="stationStaticMask">Subnet Mask</label>
+                    </div>
+                    <div class="formfield">
+                      <input id="stationStaticGateway" type="text" placeholder="192.168.1.1" />
+                      <label for="stationStaticGateway">Gateway Address</label>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="formfield info">Access Point (Service) Mode Settings</div>
+                <div class="child">
+                  <div class="formfield">
+                    <input id="accessPointSsid" type="text" maxlength="31" />
+                    <label for="accessPointSsid">AP SSID Name</label>
+                  </div>
+                  <div class="formfield">
+                    <input id="accessPointPassword" type="password" minlength="8" maxlength="63" />
+                    <label for="accessPointPassword">AP Password</label>
+                  </div>
+                  <div class="formfield">
+                    <input id="accessPointIp" type="text" />
+                    <label for="accessPointIp">AP Gateway IP</label>
+                  </div>
+                  <div class="formfield">
+                    <input id="accessPointMask" type="text" />
+                    <label for="accessPointMask">AP Gateway Subnet Mask</label>
+                  </div>
+                </div>
+
+                <div class="formfield info">WWW authentication</div>
+                <div class="child">
+                  <div class="formfield">
+                    <input id="authenticationEnabled" type="checkbox" />
+                    <label for="authenticationEnabled">Enable WWW authentication</label>
+                  </div>
+                  <div class="formfield">
+                    <input id="adminUsername" type="text" maxlength="31" />
+                    <label for="adminUsername">Username</label>
+                  </div>
+                  <div class="formfield">
+                    <input id="adminPassword" type="password" maxlength="31" />
+                    <label for="adminPassword">Password</label>
+                  </div>
+                </div>
+              </fieldset>
+            </section>
+
+            <section id="midi">
+              <h3 class="parent">
+                <input id="midiEnabled" type="checkbox" checked />
+                <label for="midiEnabled">MIDI Input Controllers</label>
+              </h3>
+              <div id="midi-container"></div>
+            </section>
+
+            <section id="hardware">
+              <h3 class="parent">
+                <input id="hardwareInputsEnabled" type="checkbox" checked />
+                <label for="hardwareInputsEnabled">Hardware Inputs (Pedals, Halfmoons)</label>
+              </h3>
+              <div id="pedal-container"></div>
+            </section>
+
+            <section id="misc">
+              <h3 class="parent">Startup</h3>
+              <fieldset id="logic-globals" class="child">
+                <div class="formfield">
+                  <div class="parameterName">Buttons layout:</div>
+                  <div class="child">
+                    <input id="uiButtonOrder0" name="buttonOrder" type="radio" value="0" />
+                    <label for="uiButtonOrder0">SLOW / STOP / FAST</label><br />
+                    <input id="uiButtonOrder1" name="buttonOrder" type="radio" value="1" />
+                    <label for="uiButtonOrder1">STOP / SLOW / FAST</label>
+                  </div>
+                </div>
+                <div class="formfield">
+                  <div class="parameterName">Power-on Speed:</div>
+                  <div class="child">
+                    <input id="startupSpeed0" name="startupSpeed" type="radio" value="0" />
+                    <label for="startupSpeed0">STOP</label><br />
+                    <input id="startupSpeed1" name="startupSpeed" type="radio" value="1" />
+                    <label for="startupSpeed1">SLOW</label><br />
+                    <input id="startupSpeed2" name="startupSpeed" type="radio" value="2" />
+                    <label for="startupSpeed2">FAST</label>
+                  </div>
+                </div>
+              </fieldset>
+            </section>
+
+            <section id="save">
+              <h3 class="hidden">Save</h3>
+              <div class="formfield center parent">
+                <button type="submit" id="saveButton" class="tobedisabled">Save Settings</button>
+                <button type="button" id="restartButton">Restart Device</button>
+              </div>
+            </section>
+          </main>
+        </form>
+      </div>
+
+      <footer id="footer">
+        <a href="about">kbWinder Pro</a> v?.? [<a href="http://kamilbaranski.com/kbWinder">www</a>] &copy;
+        <a href="https://kamilbaranski.com/">Kamil Baranski</a>.
+      </footer>
+    </div>
+    <div id="ota-modal">
+      <h2>System Update in Progress</h2>
+      <p id="ota-msg">Starting...</p>
+      <div id="ota-box">
+        <div id="ota-bar"></div>
+      </div>
+      <p id="ota-perc">0%</p>
+    </div>
+    <div id="webDebug" class="hidden"></div>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "short_name": "kbWinder",
+  "name": "kbWinder Controller",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    }
+  ],
+  "start_url": "/index.html",
+  "background_color": "#2c3e50",
+  "theme_color": "#2c3e50",
+  "display": "standalone",
+  "orientation": "portrait"
+}
