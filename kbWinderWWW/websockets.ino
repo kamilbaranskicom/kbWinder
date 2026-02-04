@@ -48,14 +48,14 @@ void broadcastLog(LogLevel level, const String &message) {
   if (ws == nullptr || ws->count() == 0)
     return;
 
-  StaticJsonDocument<MAX_LOG_LINE_LENGTH + 1024> doc;
+  DynamicJsonDocument doc(MAX_LOG_LINE_LENGTH + 512);
   doc[F("type")] = F("log");
   doc[F("level")] = getLogLevelName(level); // Zwraca __FlashStringHelper*
   doc[F("message")] = message;
 
-  char buffer[MAX_LOG_LINE_LENGTH + 1024];
+  static char buffer[MAX_LOG_LINE_LENGTH + 512];
 
-  size_t len = serializeJsonSmart(doc, buffer, sizeof(buffer));
+  size_t len = serializeJson(doc, buffer, sizeof(buffer));
 
   // zamiast tego:
   // ws->textAll(buffer, len);
