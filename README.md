@@ -1,17 +1,19 @@
 
 # kbWinder
 
-This is my approach to pickup coil (or spool of thread ;P ) winder firmware.
+This is my approach to pickup coil (or spool of thread ;P ) winder firmware. Dedicated to Piotr Stożek at Woodys Backline for helping me with my Hammond Organs/Rhodes/Wurlitzer Pianos and other stuff.
 
-I used [original sandy9159 hardware](https://github.com/sandy9159/DIY-Arduino-based-Guitar-Pickup-Coil-Winder), but with semi-pro firmware.
+I used [original sandy9159 idea](https://github.com/sandy9159/DIY-Arduino-based-Guitar-Pickup-Coil-Winder), but created better (and - most of all - **working**) software.
+
+The software pushes the Arduino Nano to its edges - both on RAM, and speed on my TMC2209 (as it has 1600 steps per revolution), so if you can use A4988 with 400/800 steps/rev DO IT. The ESP with its WiFi/AsyncWebServer/Websockets is also pushed.
 
 ## Features:
-- get rid of Nextion 1990-style controller ;)
 - Presets for winding (with load/save/delete/export)
 - Tasks
 - Configuration (with motor start/max/accel rpm, screw width and more)
+- get rid of Nextion 1990-style controller ;)
 - Serial interface with lots of commands
-- WWW/JS interface with most of them
+- ESP8266-powered WWW/JS interface with most of them
 - Jog both stepper motors
 - Precise seek zero with limit switch 
 - Driving motors with no external libraries
@@ -19,17 +21,29 @@ I used [original sandy9159 hardware](https://github.com/sandy9159/DIY-Arduino-ba
 - Start point for presets
 - (...etc...)
 
+## Screenshots:
 
+<img src="https://raw.githubusercontent.com/kamilbaranskicom/kbWinder/refs/heads/main/imgs/kbWinderScreenshot1.jpg" width="48%">
+<img src="https://raw.githubusercontent.com/kamilbaranskicom/kbWinder/refs/heads/main/imgs/kbWinderScreenshot2.jpg" width="48%">
+
+## Needed:
+- [Original hardware](original/README.sandy9159.md)
+- ESP8266 for WWW access (optional; you can still use manual text commands)
+- TXB0104 or similar voltage converter for Nano-ESP8266 connection (**THIS IS IMPORTANT**: ESP8266 uses 3.3V logic, while Arduino Nano uses 5V. You need to convert voltage levels or you will burn the ESP!)
+- Limit switch (optional) - connected to D4 and GND on the PCB board
+
+## ESP configuration
+The setup.html page on the ESP is probably unusable (I've borrow most of the ESP code from another my project), so just set WiFi settings in <code>kbWinderWWW/data/configuration.json</code>. mDNS should allow to access WWW interface on http://kbwinder.local/ , the original IP for AP mode is 192.168.4.1 (but it works in STA mode). Check the <code>kbWinderWWW/configuration.h</code> for more info about www interface settings.
 
 ## Commands:
-<pre>Movement: W, T, GOTO, SEEK ZERO
-Control: START, STOP, PAUSE, RESUME
-Presets: SAVE, LOAD, DELETE, EXPORT, IMPORT
-Settings: GET MACHINE/PRESET/RUNTIME/..., SET ..., FACTORY
+<pre>Movement: W [revs] [speed], T [dist] [speed],
+          GOTO [ZERO|BACKOFF|START|&lt;absPos&gt;], SEEK ZERO
+Control: START [values], STOP, PAUSE, RESUME
+Presets: SAVE [name], LOAD [name], DELETE [name], EXPORT
+Settings: GET [MACHINE|PRESET|RUNTIME|&lt;val&gt;], SET ..., FACTORY
 Info: STATUS, HELP, LONGHELP, SETHELP</pre>
 
 ## Status:
-
 <pre>--- MACHINE STATUS ---
 Current Task: WINDING (1 in queue)
 Progress: 2.2%
@@ -64,9 +78,9 @@ PRESET SETTINGS:
 [PRESET]  RAMP: 10
 [PRESET]  START OFFSET: 0.000
 
-RUNTIME SETTINGS:
+RUNTIME SETTINGS (readonly):
 [RUNTIME] POSITION: 0
-[RUNTIME] OS VERSION: 0.1
+[RUNTIME] OS VERSION: 1.0
 [RUNTIME] IS PAUSE REQUESTED: OFF
 [RUNTIME] STEPS PER MM: 1600.000
 [RUNTIME] IS HOMED: OFF
