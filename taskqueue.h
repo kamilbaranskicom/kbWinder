@@ -25,7 +25,7 @@ struct Task {
   unsigned long taskLastPinged;
 };
 
-#define QUEUE_SIZE 5
+#define QUEUE_SIZE 3
 Task taskQueue[QUEUE_SIZE];
 int head = 0;  // Index of the current task
 int tail = 0;  // Index where next task will be added

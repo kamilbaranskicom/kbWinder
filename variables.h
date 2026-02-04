@@ -53,13 +53,12 @@ VarMap varTable[] = { { "SCREW PITCH", &cfg.screwPitch, T_FLOAT, C_MACHINE, 0 },
 
                       { "STEPS PER MM", &stepsPerMM, T_FLOAT, C_RUNTIME, 0 },
                       { "IS HOMED", &isHomed, T_BOOL, C_RUNTIME, 0 },
-                      { "HOMING PHASE", &homingPhase, T_INT, C_RUNTIME, 0 },
+//                      { "HOMING PHASE", &homingPhase, T_INT, C_RUNTIME, 0 },
 
                       { "LAST STEP MICROS", &lastStepMicros, T_LONG, C_RUNTIME, 0 },
-                      { "TRAVERSE ACCUMULATOR", &traverseAccumulator, T_FLOAT, C_RUNTIME, 0 },
+//                      { "TRAVERSE ACCUMULATOR", &traverseAccumulator, T_FLOAT, C_RUNTIME, 0 },
                       { "CURRENT LAYER STEPS", &currentLayerSteps, T_LONG, C_RUNTIME, 0 },
-                      { "LAYER DIRECTION", &layerDir, T_INT, C_RUNTIME, 0 },
-                      { "BACKOFF DISTANCE MM", &backoffDistanceMM, T_FLOAT, C_RUNTIME, 0 } };
+                      { "LAYER DIRECTION", &layerDir, T_INT, C_RUNTIME, 0 } };
 
 
 const int varCount = sizeof(varTable) / sizeof(VarMap);
