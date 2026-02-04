@@ -72,6 +72,12 @@ void sayHello() {
 void debugSerialFlush() { DEBUG_UART.flush(); }
 
 void serialPrintLog(LogLevel level, String message, bool newLine = true) {
+  if (level == LOG_LEVEL_SENDCMD) {
+    DEBUG_UART.println(message);
+  }
+  return;
+  // following just for debug when using UART bridge on the PC side
+
   // if (level == LOG_LEVEL_NANO)
   //   return; // nano nie odsyłamy z powrotem, bo nie zdążymy.
 
