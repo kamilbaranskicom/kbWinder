@@ -1,7 +1,7 @@
 
 # kbWinder
 
-This is my approach to pickup coil (or spool of thread ;P ) winder firmware. Dedicated to Piotr Stożek at Woodys Backline for helping me with my Hammond Organs/Rhodes/Wurlitzer Pianos and other stuff.
+This is my approach to pickup coil (or spool of thread ;P ) winder firmware. Dedicated to Piotr Stożek at [Woodys Backline](https://woodysbackline.com/) for helping me with my Hammond Organs/Leslies/Rhodes/Wurlitzer Pianos and other stuff.
 
 I used [original sandy9159 idea](https://github.com/sandy9159/DIY-Arduino-based-Guitar-Pickup-Coil-Winder), but created better (and - most of all - **working**) software.
 
