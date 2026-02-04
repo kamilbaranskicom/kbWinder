@@ -169,6 +169,14 @@
           <label for="TRAVERSE_START_SPEED">TRAVERSE START SPEED</label>
         </div>
         <div>
+          <input type="number" id="WINDER_DEFAULT_RAMP" min="1" max="150" step="1" value="30" onChange="sendCommand('SET WINDER DEFAULT RAMP ' + this.value)" />
+          <label for="WINDER_DEFAULT_RAMP">WINDER DEFAULT RAMP</label>
+        </div>
+        <div>
+          <input type="number" id="TRAVERSE_DEFAULT_RAMP" min="1" max="100" step="1" value="30" onChange="sendCommand('SET TRAVERSE DEFAULT RAMP ' + this.value)" />
+          <label for="TRAVERSE_DEFAULT_RAMP">TRAVERSE DEFAULT RAMP</label>
+        </div>
+        <div>
           <input type="checkbox" id="WINDER_DIRECTION" min="1" max="100" step="1" value="BACKWARD" onChange="sendCommand('SET WINDER DIRECTION ' + (this.checked ? 'FORWARD' : 'BACKWARD'))" />
           <label for="WINDER_DIRECTION">WINDER DIRECTION</label>
         </div>
