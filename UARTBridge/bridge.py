@@ -5,7 +5,7 @@ import time
 
 # --- TWOJA KONFIGURACJA ---
 PORT_NANO = 'COM4'
-PORT_ESP = 'COM3'
+PORT_ESP = 'COM6'
 BAUD_NANO = 57600
 BAUD_ESP = 57600
 
@@ -42,20 +42,26 @@ def esp_to_nano():
             except: pass
         time.sleep(0.01) # Mała pauza dla CPU
 
-def nano_to_pc():
+def nano_relay():
     global running
     while running:
         if ser_nano.in_waiting > 0:
             try:
-                raw_line = ser_nano.readline().decode('utf-8', errors='replace').strip()
+                # Odczytujemy linię z Nano
+                raw_data = ser_nano.readline()
+                raw_line = raw_data.decode('utf-8', errors='replace').strip()
+                
                 if raw_line:
+                    # 1. Wypisz w konsoli PC (żebyś widział debug)
                     print(f"📟 NANO: {raw_line}")
+                    
+                    # 2. PRZEŚLIJ DO ESP (żeby ESP mogło to przetworzyć)
+                    ser_esp.write((raw_line + "\n").encode('utf-8'))
             except: pass
-        time.sleep(0.01)
+        time.sleep(0.001)
 
-# Uruchomienie wątków (tym razem bez daemon=True, zamkniemy je sami)
 t1 = threading.Thread(target=esp_to_nano)
-t2 = threading.Thread(target=nano_to_pc)
+t2 = threading.Thread(target=nano_relay)
 t1.start()
 t2.start()
 
