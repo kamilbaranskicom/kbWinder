@@ -29,7 +29,7 @@ The software pushes the Arduino Nano to its edges - both on RAM, and speed on my
 ## Needed:
 - [Original hardware](original/README.sandy9159.md)
 - ESP8266 for WWW access (optional; you can still use manual text commands)
-- TXB0104 or similar voltage converter for Nano-ESP8266 connection (**THIS IS IMPORTANT**: ESP8266 uses 3.3V logic, while Arduino Nano uses 5V. You need to convert voltage levels or you will burn the ESP!)
+- TXB0104 or similar voltage converter for Nano-ESP8266 connection (**THIS IS IMPORTANT**: ESP8266 uses 3.3V logic, while Arduino Nano uses 5V. You need to convert voltage levels or you will burn the ESP! Alternatively you can use connect Nano and ESP to your computer and use <code>UARTBridge/bridge.py</code> (remember to set the COM ports).
 - Limit switch (optional) - connected to D4 and GND on the PCB board
 
 ## ESP configuration
