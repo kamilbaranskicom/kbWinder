@@ -4,8 +4,8 @@ import re
 import time
 
 # --- TWOJA KONFIGURACJA ---
-PORT_NANO = 'COM4'
-PORT_ESP = 'COM6'
+PORT_NANO = 'COM3'
+PORT_ESP = 'COM4'
 BAUD_NANO = 57600
 BAUD_ESP = 57600
 
@@ -29,17 +29,29 @@ def esp_to_nano():
     while running:
         if ser_esp.in_waiting > 0:
             try:
+                # Odczyt surowej linii
                 raw_line = ser_esp.readline().decode('utf-8', errors='replace')
+                
+                # Czyścimy kolory ANSI i białe znaki
                 clean_line = clean_log_line(raw_line).strip()
-                if "[SENDCMD]" in clean_line:
-                    parts = clean_line.split(']', 1)
-                    if len(parts) > 1:
-                        cmd = parts[1].strip()
-                        ser_nano.write((cmd + "\n").encode('utf-8'))
-                        print(f"🚀 ESP -> NANO: '{cmd}'")
-                elif clean_line:
+                
+                if not clean_line:
+                    continue
+
+                # LOGIKA FILTROWANIA:
+                # Logi systemowe zawsze zaczynają się od nagłówka w nawiasach, np. [DEBUG ], [INFO  ]
+                if clean_line.startswith('['):
+                    # To jest log z ESP, wypisujemy go tylko na konsolę bridge'a
                     print(f"☁️  ESP LOG: {clean_line}")
-            except: pass
+                else:
+                    # To nie ma nagłówka, więc to "czysta" komenda przeznaczona dla Nano
+                    ser_nano.write((clean_line + "\n").encode('utf-8'))
+                    # Opcjonalne: logujemy w bridge'u, że przepchnęliśmy komendę
+                    print(f"🚀 ESP -> NANO: '{clean_line}'")
+                    
+            except Exception as e:
+                # print(f"Bridge Error: {e}")
+                pass
         time.sleep(0.01) # Mała pauza dla CPU
 
 def nano_relay():
