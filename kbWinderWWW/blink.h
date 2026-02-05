@@ -1,8 +1,8 @@
 /**
  * @file blink.h
- * @brief UART-based LED control (Hardware Hack).
+ * @brief LED control, just normal, asynchronous.
  * @author Kamil Baranski
- * @date 2026-01-23
+ * @date 2026-02-05
  */
 
 #ifndef BLINK_H
