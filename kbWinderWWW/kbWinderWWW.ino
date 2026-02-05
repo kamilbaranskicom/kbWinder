@@ -17,8 +17,6 @@ const char S____DATE[] PROGMEM = "2026-02-03";                             ///< 
 const char S__AUTHOR[] PROGMEM = "Kamil Baranski";                         ///< Author name
 const char S_AUTHURL[] PROGMEM = "https://kamilbaranski.com/";             ///< Author website
 const char S_PRODURL[] PROGMEM = "https://kamilbaranski.com/kbWinderWWW/"; ///< Product website
-/** @brief OTA Update URL (HTTP only for compatibility) */
-const char S_UPDATEU[] PROGMEM = "http://kamilbaranski.com/kbWinderWWW/firmware/update.json?version=";
 ///@}
 
 #define PUSHOTA ///< Define to enable Push OTA (Note: Consumes significant RAM)
@@ -28,13 +26,13 @@ const char S_UPDATEU[] PROGMEM = "http://kamilbaranski.com/kbWinderWWW/firmware/
 #include "kbWinderWWW.h"
 #include "network.h"
 #include "reset.h"
+#include "webserver.h"
 
 /** @brief Global configuration instance holding system, network, and logic settings */
 MainConfiguration configuration;
 
 /** @brief Structure holding software metadata for UI and logs */
-SoftwareInfo softwareInfo = {
-    FPSTR(S____NAME), FPSTR(S_VERSION), FPSTR(S____DATE), FPSTR(S__AUTHOR), FPSTR(S_AUTHURL), FPSTR(S_PRODURL), FPSTR(S_UPDATEU)};
+SoftwareInfo softwareInfo = {FPSTR(S____NAME), FPSTR(S_VERSION), FPSTR(S____DATE), FPSTR(S__AUTHOR), FPSTR(S_AUTHURL), FPSTR(S_PRODURL)};
 
 /** @name Network and Communication */
 ///@{
@@ -98,9 +96,12 @@ void setup() {
 void loop() {
   // 1. Background tasks: Network, OTA, Webserver
   processSerialInput();
-  processUpdateRequest(); ///< Handle firmware update checks
-  processNetworkTasks();  ///< Maintain WiFi and WebSocket connections
-  processBlinks();        ///< Handle asynchronous LED patterns
+  processNetworkTasks(); ///< Maintain WiFi and WebSocket connections
+  processBlinks();       ///< Handle asynchronous LED patterns
+
+  processCommandQueue();
+  handleUpdateWsStatusPending();
+
   processPendingReboot(); ///< Execute reboot if requested by Web UI
   processFlashButton();   ///< Monitor button for long-press resets
 }
@@ -123,7 +124,7 @@ void processSerialInput() {
   if (batchBuffer.length() > 0 && (millis() - lastCharTime > timeout)) {
 
     // Logujemy to lokalnie (opcjonalnie)
-    logMessage(LOG_LEVEL_NOTICE, "Batch received, size: " + String(batchBuffer.length()));
+    logMessage(LOG_LEVEL_DEBUG, "Batch received, size: " + String(batchBuffer.length()));
 
     int startIdx = 0;
     int endIdx = batchBuffer.indexOf('\n');

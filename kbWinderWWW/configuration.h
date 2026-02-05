@@ -21,7 +21,8 @@
  * List of files that are critical for system operation and cannot be deleted via API.
  */
 ///@{
-const char *PROTECTED_FILES[] = {"/configuration.json", "/index.html", "/setup.html", "/favicon.svg", "/kbWinder.js", "/kbWinder.css", "/variables.h"};
+const char *PROTECTED_FILES[] = {
+    "/configuration.json", "/index.html", "/setup.html", "/favicon.svg", "/kbWinder.js", "/kbWinder.css", "/variables.h"};
 
 const size_t PROTECTED_FILES_COUNT = sizeof(PROTECTED_FILES) / sizeof(PROTECTED_FILES[0]);
 
@@ -148,7 +149,6 @@ struct SoftwareInfo {
   const __FlashStringHelper *author;
   const __FlashStringHelper *authorUrl;
   const __FlashStringHelper *productUrl;
-  const __FlashStringHelper *updateUrl;
 
   void toJson(JsonObject root) const {
     root[F("name")] = name;
@@ -157,7 +157,6 @@ struct SoftwareInfo {
     root[F("author")] = author;
     root[F("authorUrl")] = authorUrl;
     root[F("productUrl")] = productUrl;
-    // hiding updateUrl from Json
   }
 };
 

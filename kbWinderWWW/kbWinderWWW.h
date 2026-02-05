@@ -31,4 +31,15 @@ const __FlashStringHelper *logo[] = {
     FPSTR(logo1), FPSTR(logo2), FPSTR(logo3), FPSTR(logo4), FPSTR(logo5), FPSTR(logo6), FPSTR(logo7), FPSTR(logo8), FPSTR(logo9)};
 ///@}
 
+String commandFromApi = "";
+bool apiCommandPending = false;
+bool updateWsStatusPending = false;
+
+#include <deque>
+
+std::deque<String> commandQueue;
+unsigned long lastCommandSentTime = 0;
+const unsigned long COMMAND_SPACING_MS = 50; // Przerwa między komendami dla Nano
+
+
 #endif // KBWINDER_H

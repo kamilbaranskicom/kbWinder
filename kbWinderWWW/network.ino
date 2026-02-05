@@ -17,7 +17,6 @@ DNSServer *dnsServer = nullptr;
 unsigned long connectionStartTime = 0;
 bool isStationConnecting = false;
 bool networkInitialized = false;
-bool pendingUpdateRequest = false;
 uint32_t rebootRequestedAt = 0;
 bool isRebootPending = false;
 

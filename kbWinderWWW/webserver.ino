@@ -3,6 +3,8 @@
  * @brief Asynchronous Web Server and API handlers for kbWinder.
  */
 
+#include "webserver.h"
+
 void initializeWebServer() {
   if (server == nullptr)
     server = new AsyncWebServer(80);
@@ -114,10 +116,6 @@ void registerRoutes() {
   server->on("/api/wifi-scan-results", HTTP_GET, withAuth(withLock(handleWiFiScanResults)));
   server->on("/api/reboot", HTTP_GET | HTTP_POST, withAuth(withLock(handleRebootAsync)));
   server->on("/api/restart", HTTP_GET | HTTP_POST, withAuth(withLock(handleRebootAsync)));
-  server->on("/api/update", HTTP_GET | HTTP_POST, withAuth(withLock([](AsyncWebServerRequest *request) {
-    pendingUpdateRequest = true;
-    request->send(200, FPSTR(TEXT_PLAIN), F("OK: Update process initiated. Check logs."));
-  })));
 
   // --- 5. Debug ---
   server->on("/api/netdebug", HTTP_GET, withLock(withAuth([](AsyncWebServerRequest *request) {
@@ -236,34 +234,72 @@ void handleApiFileDelete(AsyncWebServerRequest *request) {
 void handleCommandAsync(AsyncWebServerRequest *request) {
   if (!request->hasParam("cmd")) {
     logMessage(LOG_LEVEL_ERROR, "API command: no cmd.");
-    request->send(500, FPSTR(APPLICATION_JSON), "{\"message\":\"no cmd\"}");
+    request->send(400, FPSTR(APPLICATION_JSON), "{\"message\":\"no cmd\"}");
     return;
   }
-  // 2. Pobieramy wartość parametru
-  String command = request->getParam("cmd")->value();
 
-  logMessagef(LOG_LEVEL_DEBUG, "API Control: Received command '%s'", command.c_str());
+  String cmd = request->getParam("cmd")->value();
 
-  // *** SEND THE COMMAND
-
-  sendCommand(command);
+  // Jeśli komenda zawiera znaki nowej linii (batch), rozbijamy ją na osobne rozkazy
+  int start = 0;
+  int end = cmd.indexOf('\n');
+  while (end != -1) {
+    String sub = cmd.substring(start, end);
+    sub.trim();
+    if (sub.length() > 0)
+      commandQueue.push_back(sub);
+    start = end + 1;
+    end = cmd.indexOf('\n', start);
+  }
+  // Ostatnia (lub jedyna) część
+  String last = cmd.substring(start);
+  last.trim();
+  if (last.length() > 0)
+    commandQueue.push_back(last);
 
   // Budujemy specyficzną odpowiedź, ale używamy fillSystemStatus
   StaticJsonDocument<256> doc;
   JsonObject root = doc.to<JsonObject>();
-  root["status"] = "CommandSent";
-  root["command"] = command;
+  root["status"] = "CommandQueued";
+  root["command"] = commandFromApi;
   fillSystemStatus(root, false); // Dodaje actualSpeed, heap, uptime automatycznie
 
   String response;
   serializeJsonSmart(doc, response);
   request->send(200, FPSTR(APPLICATION_JSON), response);
-
-  // Aktualizacja WS dla reszty świata
-  sendUnifiedStatus(nullptr, nullptr, true, false);
 }
 
 void sendCommand(String command) { logMessage(LOG_LEVEL_SENDCMD, command); }
+
+void processCommandQueue() {
+  if (commandQueue.empty())
+    return;
+
+  unsigned long now = millis();
+  // Wysyłamy kolejną komendę tylko, jeśli minął czas COMMAND_SPACING_MS
+  if (now - lastCommandSentTime >= COMMAND_SPACING_MS) {
+    String cmd = commandQueue.front();
+    commandQueue.pop_front();
+
+    // Fizyczne wysłanie do Nano
+    sendCommand(cmd);
+
+    lastCommandSentTime = now;
+
+    // Opcjonalnie: logowanie postępu (bezpieczne, bo jesteśmy w loop)
+    logMessagef(LOG_LEVEL_DEBUG, "Queue: Sent to Nano [%s], left in queue: %d", cmd.c_str(), commandQueue.size());
+
+    updateWsStatusPending = true;
+    blink(1);
+  }
+}
+
+void handleUpdateWsStatusPending() {
+  if (updateWsStatusPending) {
+    updateWsStatusPending = false;
+    sendUnifiedStatus(nullptr, nullptr, true, false);
+  }
+}
 
 /**
  * @brief Serves the complete system configuration and metadata as JSON.
